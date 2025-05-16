@@ -244,10 +244,8 @@ sub test-xof-variable-files(%file-list,&fn) {
             emit-test-cases-shake-variable($path)
         }
         $supply.tap: {
-	    
             my ($count, $outputlen, $msg, $output) = $_;
 	    my $b = Buf.new(pack("H*", $msg));
-	    if $outputlen > 1087 {
             my $SHA3 = &fn();
             $SHA3.absorb($b);
             ok $SHA3.squeeze($outputlen div 8)>>.fmt('%02x').join eqv $output, "$file.rsp $count";
@@ -258,7 +256,6 @@ sub test-xof-variable-files(%file-list,&fn) {
 	    ok $chunked-one>>.fmt('%02x').join eqv $output, "$file.rsp $count chunked output (1)";
 	    my $chunked-onethree = test-chunked-output-helper(&fn,$b, $outputlen, 13);
 	    ok $chunked-onethree>>.fmt('%02x').join eqv $output, "$file.rsp $count chunked output (13)";
-	    }
         }
     }
 }
@@ -425,25 +422,25 @@ for %xof-ciphers.values -> &c {
     xof-reset-before-test(&c, 201, 201);
 }
 
- test-hash-files(%SHA3_224-files, &SHA3_224);
- test-hash-files(%SHA3_256-files, &SHA3_256);
- test-hash-files(%SHA3_384-files, &SHA3_384);
- test-hash-files(%SHA3_512-files, &SHA3_512);
+test-hash-files(%SHA3_224-files, &SHA3_224);
+test-hash-files(%SHA3_256-files, &SHA3_256);
+test-hash-files(%SHA3_384-files, &SHA3_384);
+test-hash-files(%SHA3_512-files, &SHA3_512);
 
- test-xof-files(%shake128-files, &SHAKE128, 128);
- test-xof-files(%shake256-files, &SHAKE256, 256);
- test-xof-variable-files(%shake128-variable-files, &SHAKE128);
- test-xof-variable-files(%shake256-variable-files, &SHAKE256);
+test-xof-files(%shake128-files, &SHAKE128, 128);
+test-xof-files(%shake256-files, &SHAKE256, 256);
+test-xof-variable-files(%shake128-variable-files, &SHAKE128);
+test-xof-variable-files(%shake256-variable-files, &SHAKE256);
 
- test-hash-montecarlo-files(%SHA3_224-montecarlo-files, &SHA3_224);
- test-hash-montecarlo-files(%SHA3_256-montecarlo-files, &SHA3_256);
- test-hash-montecarlo-files(%SHA3_384-montecarlo-files, &SHA3_384);
- test-hash-montecarlo-files(%SHA3_512-montecarlo-files, &SHA3_512);
+test-hash-montecarlo-files(%SHA3_224-montecarlo-files, &SHA3_224);
+test-hash-montecarlo-files(%SHA3_256-montecarlo-files, &SHA3_256);
+test-hash-montecarlo-files(%SHA3_384-montecarlo-files, &SHA3_384);
+test-hash-montecarlo-files(%SHA3_512-montecarlo-files, &SHA3_512);
 
- test-xof-montecarlo-files(%shake128-montecarlo-files, &SHAKE128);
- test-xof-montecarlo-files(%shake256-montecarlo-files, &SHAKE256);
+test-xof-montecarlo-files(%shake128-montecarlo-files, &SHAKE128);
+test-xof-montecarlo-files(%shake256-montecarlo-files, &SHAKE256);
 
- perftest();
- perftest2();
+perftest();
+perftest2();
 
 done-testing;

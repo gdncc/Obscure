@@ -236,7 +236,6 @@ role KECCAK-c[Capacity $capacity,
         # squeeze
 	my $output = Buf.new;
 	my $updated-output-bytes-length = $.output-bytes-length;
-
 	while ($updated-output-bytes-length + $!last-read-pos > $!rate ) {
 
 	    $output.append($!output-buffer.subbuf($!last-read-pos, $!rate - $!last-read-pos));
