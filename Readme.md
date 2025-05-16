@@ -1,4 +1,13 @@
-# Raku Cryptography Playground
+# Obscure: a Raku Programming Language Cryptography Playground
+
+> [!CAUTION]
+> :warning: **Under no circumstances should this be used for cryptographic
+applications.** :warning:
+> 
+> This is an educational resource. The intended use of this project
+> is for learning and experimenting with cryptography using the
+> [Raku](https://raku.org/)  programming language.
+
 
 Implemented: 
 
