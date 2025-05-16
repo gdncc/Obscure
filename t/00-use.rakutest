@@ -2,4 +2,4 @@ use Test;
 
 plan 1;
 
-use-ok "Obscure";
+use-ok "Obscure::Hashes::SHA3";
