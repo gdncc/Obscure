@@ -1,0 +1,94 @@
+NAME
+====
+
+Obscure::Hashes::SHA3
+
+DESCRIPTION
+===========
+
+A pure Raku implementation of the SHA‑3 and SHAKE hash families. It provides four cryptographic hash functions, SHA3-224, SHA3-256, SHA3-384, and SHA3-512, and two extendable-output functions (XOFs), SHAKE128 and SHAKE256 of the SHA-3 family of functions. It provides one-shot, and streaming APIs.
+
+This module is self‑contained.
+
+Caution! Under no circumstances should this be used for cryptographic applications. This is an educational resource. The intended use of this project is for learning and experimenting with cryptography using Raku.
+
+SYNOPSIS
+========
+
+```raku
+use Obscure::Hashes::SHA3;
+
+# SHA-3, one-shot
+
+say SHA3_224().hash("hello world"); 
+
+# SHA-3, streaming
+
+my $streaming-sha = SHA3_256();
+$streaming-sha.update: "hello";
+$streaming-sha.update: " world";
+say $streaming-sha.final».fmt("%02x").join; # 644b ...
+
+$streaming-sha.reset;
+
+$streaming-sha.update(Buf.new(<0x74 0x65 0x73 0x74>)); 
+say $streaming-sha.final».fmt("%02x").join # 36f0 ...
+
+# SHAKE
+
+my $shake = SHAKE128();
+$shake.absorb("Hello");
+say $shake.squeeze(3)>>.fmt("%02x").join; # 4131f8
+say $shake.squeeze(1)>>.fmt("%02x").join; # db
+```
+
+MISC NOTES
+==========
+
+Installation
+------------
+
+```bash
+# install from local directory
+
+zef install --/test ./Obscure # Install without testing
+
+# uninstall
+
+zef uninstall Obscure
+```
+
+Generate Documentation
+----------------------
+
+```bash
+raku --doc=Markdown doc/Hashes/SHA3.rakudoc > SHA-3.md
+```
+
+Testing
+-------
+
+The test-suite contains Secure Hash Algorithm-3 Validation System (SHA3VS) vectors: the short message, long message, and Monte Carlo (pseudorandom) tests for every implemented hash and XOF, plus variable-length-output tests for each XOF.
+
+Running all tests is slow.
+
+```bash
+raku -I . t/02-SHA3.rakutest |tee RESULT.txt
+```
+
+AUTHOR
+======
+
+Gérald Doussot
+
+COPYRIGHT AND LICENSE
+=====================
+
+Copyright (c) 2025 Gérald Doussot
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+

@@ -1,0 +1,449 @@
+use Test;
+use Obscure::Hashes::SHA3;
+use experimental :pack;
+
+my %hash-ciphers =
+        SHA3_224 => &SHA3_224,
+        SHA3_256 => &SHA3_256,
+        SHA3_384 => &SHA3_384,
+        SHA3_512 => &SHA3_512;
+
+my %xof-ciphers =
+        SHAKE128 => &SHAKE128,
+        SHAKE256 => &SHAKE256;
+
+my %SHA3_224-files =
+        SHA3_224LongMsg => 't/data/Hashes/SHA3/sha-3bytetestvectors/SHA3_224LongMsg.rsp',
+        SHA3_224ShortMsg => 't/data/Hashes/SHA3/sha-3bytetestvectors/SHA3_224ShortMsg.rsp';
+my %SHA3_256-files =
+        SHA3_256LongMsg => 't/data/Hashes/SHA3/sha-3bytetestvectors/SHA3_256LongMsg.rsp',
+        SHA3_256ShortMsg => 't/data/Hashes/SHA3/sha-3bytetestvectors/SHA3_256ShortMsg.rsp';
+my %SHA3_384-files =
+        SHA3_384LongMsg => 't/data/Hashes/SHA3/sha-3bytetestvectors/SHA3_384LongMsg.rsp',
+        SHA3_384ShortMsg => 't/data/Hashes/SHA3/sha-3bytetestvectors/SHA3_384ShortMsg.rsp';
+my %SHA3_512-files =
+        SHA3_512LongMsg => 't/data/Hashes/SHA3/sha-3bytetestvectors/SHA3_512LongMsg.rsp',
+        SHA3_512ShortMsg => 't/data/Hashes/SHA3/sha-3bytetestvectors/SHA3_512ShortMsg.rsp';
+
+my %SHA3_224-montecarlo-files =
+        SHA3_224Monte => 't/data/Hashes/SHA3/sha-3bytetestvectors/SHA3_224Monte.rsp';
+my %SHA3_256-montecarlo-files =
+        SHA3_256Monte => 't/data/Hashes/SHA3/sha-3bytetestvectors/SHA3_256Monte.rsp';
+my %SHA3_384-montecarlo-files =
+                SHA3_384Monte => 't/data/Hashes/SHA3/sha-3bytetestvectors/SHA3_384Monte.rsp';
+my %SHA3_512-montecarlo-files =
+        SHA3_512Monte => 't/data/Hashes/SHA3/sha-3bytetestvectors/SHA3_512Monte.rsp';
+
+my %shake128-files =
+        SHAKE128LongMsg => 't/data/Hashes/SHA3/shakebytetestvectors/SHAKE128LongMsg.rsp',
+        SHAKE128ShortMsg => 't/data/Hashes/SHA3/shakebytetestvectors/SHAKE128ShortMsg.rsp';
+my %shake256-files =
+        SHAKE256LongMsg => 't/data/Hashes/SHA3/shakebytetestvectors/SHAKE256LongMsg.rsp',
+        SHAKE256ShortMsg => 't/data/Hashes/SHA3/shakebytetestvectors/SHAKE256ShortMsg.rsp';
+
+my %shake128-variable-files =
+        SHAKE128VariableOut => 't/data/Hashes/SHA3/shakebytetestvectors/SHAKE128VariableOut.rsp';
+my %shake256-variable-files =
+        SHAKE256VariableOut => 't/data/Hashes/SHA3/shakebytetestvectors/SHAKE256VariableOut.rsp';
+
+my %shake128-montecarlo-files =
+        SHAKE128Monte => 't/data/Hashes/SHA3/shakebytetestvectors/SHAKE128Monte.rsp';
+my %shake256-montecarlo-files =
+        SHAKE256Monte => 't/data/Hashes/SHA3/shakebytetestvectors/SHAKE256Monte.rsp';
+
+sub emit-test-cases-hash ($filename) {
+    my $len = 0;
+    my $msg;
+    my $md;
+    for $filename.IO.lines -> $line {
+        if $line ~~ /'Len = ' (\d+) / {
+            $len = $0;
+            next
+        };
+        if $line ~~ /'Msg = ' (\w+) / {
+            if $len == 0  {
+                $msg = "" }
+            else {
+                $msg = "$0"
+            }
+                next
+            };
+        if $line ~~ /'MD = ' (\w+) / {
+            $md = "$0";
+            emit ($len, $msg, $md)
+        }
+    }
+}
+
+sub emit-test-cases-shake ($filename) {
+    my $len = 0;
+    my $msg;
+    my $output;
+    for $filename.IO.lines -> $line {
+        if $line ~~ /'Len = ' (\d+) / {
+            $len = $0;
+            next
+        }
+        if $line ~~ /'Msg = ' (\w+) / {
+            if $len == 0  {
+                $msg = "" }
+            else {
+                $msg = "$0";
+            }
+            next
+        }
+        if $line ~~ /'Output = ' (\w+) / {
+            $output = "$0";
+            emit ($len, $msg, $output)
+        }
+    }
+}
+
+sub emit-test-cases-shake-variable ($filename) {
+    my $count = 0;
+    my $outputlen = 0;
+    my $msg;
+    my $output;
+    for $filename.IO.lines -> $line {
+        if $line ~~ /'COUNT = ' (\d+) / {
+            $count = $0;
+            next
+        }
+        if $line ~~ /'Outputlen = ' (\d+) / {
+            $outputlen = $0;
+            next
+        }
+        if $line ~~ /'Msg = ' (\w+) / {
+            $msg = "$0";
+            next
+        }
+        if $line ~~ /'Output = ' (\w+) / {
+            $output = "$0";
+            emit ($count, $outputlen, $msg, $output)
+        }
+    }
+}
+
+sub emit-test-cases-hash-montecarlo ($filename) {
+    my $seed;
+    my $count = 0;
+    my $md;
+    for $filename.IO.lines -> $line {
+        if $line ~~ /'Seed = ' (\w+) / {
+            $seed = "$0";
+            next
+        }
+        if $line ~~ /'COUNT = 99'/ {
+            $count = 99;
+            next
+        }
+        if $count == 99 and $line ~~ /'MD = ' (\w+) / {
+            $md = "$0";
+            emit ($seed, $md)
+        }
+    }
+}
+
+sub emit-test-cases-xof-montecarlo ($filename) {
+    my $msg;
+    my $outputlen = 0;
+    my $count = 0;
+    my $min = 0;
+    my $max = 0;
+    my $output;
+    for $filename.IO.lines -> $line {
+        if $line ~~ /'[Minimum Output Length (bits) = ' (\d+) / {
+            $min = $0.Int;
+            next
+        }
+        if $line ~~ /'[Maximum Output Length (bits) = ' (\d+) / {
+            $max = $0.Int;
+            next
+        }
+        # seed
+        if $line ~~ /'Msg = ' (\w+) / {
+            $msg = "$0";
+            next
+        }
+        if $line ~~ /'COUNT = ' (\d+) / {
+            $count = $0;
+            next
+        }
+        if $line ~~ /'Outputlen = ' (\d+) / {
+            $outputlen = $0;
+            next
+        }
+        if $count == 99 and $line ~~ /'Output = ' (\w+) / {
+            $output = "$0";
+            emit ($min, $max, $msg, $count, $outputlen, $output)
+        }
+    }
+}
+
+sub test-hash-files(%file-list,&fn){
+    for %file-list.kv -> $file, $path {
+        my $supply = supply {
+            emit-test-cases-hash($path);
+        }
+        $supply.tap: {
+            my ($len, $msg, $md) = $_;
+            my $SHA3 = &fn();
+	    my $b = Buf.new(pack("H*", $msg));
+            ok $SHA3.hash($b)>>.fmt('%02x').join eqv $md, "$file.rsp $len";
+	    $SHA3.reset;
+            ok $SHA3.hash($b)>>.fmt('%02x').join eqv $md, "$file.rsp $len reset after use";
+	    my $SHA3-chunked-input1 = &fn();
+	    for 0, 1  ...^ $b.elems -> $i {$SHA3-chunked-input1.update($b.subbuf($i, 1))};
+	    ok $SHA3-chunked-input1.final>>.fmt('%02x').join eqv $md, "$file.rsp $len chunked (1) input";
+	    my $SHA3-chunked-input13 = &fn();	    
+	    for 0, 13  ...^ $b.elems -> $i {$SHA3-chunked-input13.update($b.subbuf($i, 13))};
+	    ok $SHA3-chunked-input13.final>>.fmt('%02x').join eqv $md, "$file.rsp $len chunked (13) input";	    
+        }
+    }
+}
+
+sub test-chunked-output-helper(&fn, $msg, $output-len, $chunk-size) {
+    my $SHA3-chunked-output = &fn();
+    $SHA3-chunked-output.absorb($msg);
+
+    my $chunked-output = buf8.new;
+    for ^(($output-len div 8) div $chunk-size) {
+	$chunked-output.append($SHA3-chunked-output.squeeze($chunk-size));
+    }
+    if (($output-len div 8) % $chunk-size) > 0 {
+	$chunked-output.append($SHA3-chunked-output.squeeze(($output-len div 8) % $chunk-size));
+    }
+    $chunked-output
+}
+
+sub test-xof-files(%file-list, &fn, $output-len) {
+    for %file-list.kv -> $file, $path {
+        my $supply = supply {
+            emit-test-cases-shake($path)
+        }
+        $supply.tap: {
+            my ($len, $msg, $output) = $_;
+	    my $b = Buf.new(pack("H*", $msg));
+            my $SHA3 = &fn();
+            $SHA3.absorb($b);
+            ok $SHA3.squeeze($output-len div 8)>>.fmt('%02x').join eqv $output, "$file.rsp $len";
+	    $SHA3.reset;
+            $SHA3.absorb($b);
+            ok $SHA3.squeeze($output-len div 8)>>.fmt('%02x').join eqv $output, "$file.rsp $len reset after use";
+	    my $chunked-one = test-chunked-output-helper(&fn,$b, $output-len, 1);
+	    ok $chunked-one>>.fmt('%02x').join eqv $output, "$file.rsp $len chunked output (1)";
+	    my $chunked-onethree = test-chunked-output-helper(&fn,$b, $output-len, 13);
+	    ok $chunked-onethree>>.fmt('%02x').join eqv $output, "$file.rsp $len chunked output (13)";
+        }
+    }
+}
+
+sub test-xof-variable-files(%file-list,&fn) {
+    for %file-list.kv -> $file, $path {
+        my $supply = supply {
+            emit-test-cases-shake-variable($path)
+        }
+        $supply.tap: {
+	    
+            my ($count, $outputlen, $msg, $output) = $_;
+	    my $b = Buf.new(pack("H*", $msg));
+	    if $outputlen > 1087 {
+            my $SHA3 = &fn();
+            $SHA3.absorb($b);
+            ok $SHA3.squeeze($outputlen div 8)>>.fmt('%02x').join eqv $output, "$file.rsp $count";
+            $SHA3.reset;
+	    $SHA3.absorb($b);
+            ok $SHA3.squeeze($outputlen div 8)>>.fmt('%02x').join eqv $output, "$file.rsp $count reset";
+	    my $chunked-one = test-chunked-output-helper(&fn,$b, $outputlen, 1);
+	    ok $chunked-one>>.fmt('%02x').join eqv $output, "$file.rsp $count chunked output (1)";
+	    my $chunked-onethree = test-chunked-output-helper(&fn,$b, $outputlen, 13);
+	    ok $chunked-onethree>>.fmt('%02x').join eqv $output, "$file.rsp $count chunked output (13)";
+	    }
+        }
+    }
+}
+
+sub monte-carlo-fixed-test($seed, &fn) {
+    my $tmp-seed = $seed;
+    my @md[1001];
+    for ^100  {
+        @md[0] = $tmp-seed;
+        for 1 ..^1001 -> $i {
+            my Buf $msg = @md[$i - 1];
+            my $SHA3 = &fn();
+            @md[$i] = $SHA3.hash($msg)
+        }
+        $tmp-seed = @md[1000];
+        LAST {
+            return @md[1000]>>.fmt('%02x').join
+        }
+    }
+}
+
+sub test-hash-montecarlo-files(%file-list,&fn){
+    for %file-list.kv -> $file, $path {
+        my $supply = supply {
+            emit-test-cases-hash-montecarlo($path)
+        }
+        $supply.tap: {
+            my ($seed, $md) = $_;
+            ok monte-carlo-fixed-test(Buf.new(pack("H*", $seed)), &fn) eqv $md, "$file.rsp"
+        }
+    }
+}
+
+sub monte-carlo-xof-test($seed, &fn, $min, $max) {
+    my $minOutBytes = $min div 8;
+    my $maxOutBytes = $max div 8;
+    my $Range = $maxOutBytes - $minOutBytes + 1;
+    my $OutputLen = $maxOutBytes;
+    my $tmp-seed = $seed;
+    my @md[1001];
+    for ^100  {
+        @md[0] = $tmp-seed;
+        for 1 ..^1001 -> $i {
+            my Buf $msg;
+            my $mdlen = @md[$i - 1].elems;
+            if $mdlen < 16 {
+                $mdlen = 16 - $mdlen;
+                $msg = @md[$i - 1].subbuf(0,16).append(0 xx $mdlen)
+            } else {
+                $msg = @md[$i - 1].subbuf(0,16)
+            }
+            my $SHA3 = &fn();
+            $SHA3.absorb($msg);
+            @md[$i] = $SHA3.squeeze($OutputLen);
+
+            my $RightmostOutputBits = @md[$i].subbuf(*-2).read-uint16(0, BigEndian);
+            $OutputLen = $minOutBytes + ($RightmostOutputBits % $Range)
+        }
+        $tmp-seed = @md[1000];
+        LAST {
+            return @md[1000]>>.fmt('%02x').join
+        }
+    }
+}
+
+sub test-xof-montecarlo-files(%file-list, &fn){
+    for %file-list.kv -> $file, $path {
+        my $supply = supply {
+            emit-test-cases-xof-montecarlo($path)
+        }
+        $supply.tap: {
+            my ($min, $max, $msg, $count, $outputlen, $output)  = $_;
+            ok monte-carlo-xof-test(Buf.new(pack("H*", $msg)), &fn, $min, $max) eqv $output, "$file.rsp"
+        }
+    }
+}
+
+sub hash-reset-before-test (&cipher, $len) {
+    my $SHA3 = &cipher();
+    my $resettable-SHA3 = &cipher();
+    $resettable-SHA3.reset();
+    my $hash1 =  $SHA3.hash(Buf.new(pack("H*", 0xff x $len)))>>.fmt('%02x').join;
+    my $hash2 =  $resettable-SHA3.hash(Buf.new(pack("H*", 0xff x $len)))>>.fmt('%02x').join;
+    ok $hash1 eqv $hash2, "{&cipher.name} reset state before use works with input length = $len"
+}
+
+sub xof-reset-before-test (&cipher, $len, $output-len) {
+    my $SHA3 = &cipher();
+    my $resettable-SHA3 = &cipher();
+    $resettable-SHA3.reset();
+    $SHA3.absorb(Buf.new(pack("H*", 0xff x $len)));
+    my $hash1 = $SHA3.squeeze($output-len div 8)>>.fmt('%02x').join;
+    $resettable-SHA3.absorb(Buf.new(pack("H*", 0xff x $len)));
+    my $hash2 = $resettable-SHA3.squeeze($output-len div 8)>>.fmt('%02x').join;
+    ok $hash1 eqv $hash2, "{&cipher.name} reset state before use works with input length = $len, and output length = $output-len"
+}
+
+sub test-sponge-direction {
+    my $SHA3 = SHAKE128;
+    throws-like  $SHA3.squeeze(), X::AdHoc::<SpongeWrongDirection>, "Cannot squeeze without absorb";
+    $SHA3.reset;
+    $SHA3.absorb(Buf.new(pack("H*", 0xff x 1)));
+    $SHA3.reset;
+    throws-like  $SHA3.squeeze(), X::AdHoc::<SpongeWrongDirection>, "Cannot squeeze after reset";
+    $SHA3.reset;
+    $SHA3.absorb(Buf.new(pack("H*", 0xff x 1)));
+    $SHA3.squeeze();
+    throws-like {$SHA3.absorb(Buf.new(pack("H*", 0xff x 1)))}, X::AdHoc::<SpongeWrongDirection>, "Cannot absorb after squeeze"
+}
+
+sub test-more-than-one-final {
+    my $SHA3 = SHA3_256;
+    $SHA3.update("A");
+    $SHA3.final();
+    throws-like {$SHA3.final()}, X::AdHoc::<AlreadyCalledFinal>, "Cannot call final() after final()";
+    throws-like {$SHA3.final()}, X::AdHoc::<AlreadyCalledFinal>, "Cannot call final() after final()";
+    $SHA3.reset();
+    lives-ok {$SHA3.final()}, "Calling final(), reset(), final() does not throw an exception";
+}
+
+sub perftest () {
+    my $b = Buf.new(pack("H*", 0xff x 10));
+    my $resettable-SHA3 = SHA3_256;
+    for ^1000 {
+        $resettable-SHA3.hash($b);
+        $resettable-SHA3.reset
+    }
+    my $timing = now - ENTER now;
+    say "Hash with reset() the same string 1000x takes: $timing seconds"
+}
+
+sub perftest2 () {
+    my $b = Buf.new(pack("H*", 0xff x 10));
+    for ^1000 {
+        my $SHA3 = SHA3_256;
+        $SHA3.hash($b)
+    }
+    my $timing = now - ENTER now;
+    say "Hash without reset() the same string 1000x takes: $timing seconds"
+}
+
+sub test-hash-element-as-string-and-buf() {
+    my $SHA3 = SHA3_256;
+    my $h1 = $SHA3.hash("test") ;
+    $SHA3.reset;
+    my $b = Buf.new(<0x74 0x65 0x73 0x74>);
+    my $h2 = $SHA3.hash($b);
+    ok $h1 eqv $h2, "hashes of element as bytes and string are the same"
+}
+
+test-hash-element-as-string-and-buf();
+test-sponge-direction();
+test-more-than-one-final();
+
+for %hash-ciphers.values -> &c {
+    hash-reset-before-test(&c, 1);
+    hash-reset-before-test(&c,201);
+}
+
+for %xof-ciphers.values -> &c {
+    xof-reset-before-test(&c, 1, 1);
+    xof-reset-before-test(&c, 201, 1);
+    xof-reset-before-test(&c, 1, 201);
+    xof-reset-before-test(&c, 201, 201);
+}
+
+ test-hash-files(%SHA3_224-files, &SHA3_224);
+ test-hash-files(%SHA3_256-files, &SHA3_256);
+ test-hash-files(%SHA3_384-files, &SHA3_384);
+ test-hash-files(%SHA3_512-files, &SHA3_512);
+
+ test-xof-files(%shake128-files, &SHAKE128, 128);
+ test-xof-files(%shake256-files, &SHAKE256, 256);
+ test-xof-variable-files(%shake128-variable-files, &SHAKE128);
+ test-xof-variable-files(%shake256-variable-files, &SHAKE256);
+
+ test-hash-montecarlo-files(%SHA3_224-montecarlo-files, &SHA3_224);
+ test-hash-montecarlo-files(%SHA3_256-montecarlo-files, &SHA3_256);
+ test-hash-montecarlo-files(%SHA3_384-montecarlo-files, &SHA3_384);
+ test-hash-montecarlo-files(%SHA3_512-montecarlo-files, &SHA3_512);
+
+ test-xof-montecarlo-files(%shake128-montecarlo-files, &SHAKE128);
+ test-xof-montecarlo-files(%shake256-montecarlo-files, &SHAKE256);
+
+ perftest();
+ perftest2();
+
+done-testing;
