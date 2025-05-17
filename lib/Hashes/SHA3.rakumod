@@ -275,7 +275,9 @@ role HashLike[KECCAK-c $k]  {
 
     multi method hash(Blob $input-bytes ) {
         $!k.absorb($input-bytes);
-        return $!k.squeeze()
+        my $result = $!k.squeeze();
+	$!k.reset;
+	$result
     }
 
     multi method hash(Str $input-string ) {
