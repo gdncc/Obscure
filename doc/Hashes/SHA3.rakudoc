@@ -89,7 +89,7 @@ zef install -v --timeout=0 https://github.com/gdncc/Obscure.git
 
 =end code
 
-One successfully installed, you can remove Obscure as follows:
+Once successfully installed, you can remove Obscure as follows:
 
 =begin code :lang<bash>
 
