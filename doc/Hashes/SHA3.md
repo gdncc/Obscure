@@ -49,9 +49,13 @@ Installation
 ------------
 
 ```bash
-# install from local directory
+# install from local directory without testing
 
-zef install --/test ./Obscure # Install without testing
+zef install --/test ./Obscure 
+
+# install verbosely from local directory with testing. Slow
+
+zef install -v --timeout=0 ./Obscure
 
 # uninstall
 
