@@ -2,6 +2,9 @@ use Test;
 use Obscure::Hashes::SHA3;
 use experimental :pack;
 
+my $mc-test = %*ENV<OBSCURE_MONTECARLO_TEST>.Bool;
+my $perf-test = %*ENV<OBSCURE_PERF_TEST>.Bool;
+
 my %hash-ciphers =
         SHA3_224 => &SHA3_224,
         SHA3_256 => &SHA3_256,
@@ -432,15 +435,26 @@ test-xof-files(%shake256-files, &SHAKE256, 256);
 test-xof-variable-files(%shake128-variable-files, &SHAKE128);
 test-xof-variable-files(%shake256-variable-files, &SHAKE256);
 
-test-hash-montecarlo-files(%SHA3_224-montecarlo-files, &SHA3_224);
-test-hash-montecarlo-files(%SHA3_256-montecarlo-files, &SHA3_256);
-test-hash-montecarlo-files(%SHA3_384-montecarlo-files, &SHA3_384);
-test-hash-montecarlo-files(%SHA3_512-montecarlo-files, &SHA3_512);
+if $mc-test {
+    
+    test-hash-montecarlo-files(%SHA3_224-montecarlo-files, &SHA3_224);
+    test-hash-montecarlo-files(%SHA3_256-montecarlo-files, &SHA3_256);
+    test-hash-montecarlo-files(%SHA3_384-montecarlo-files, &SHA3_384);
+    test-hash-montecarlo-files(%SHA3_512-montecarlo-files, &SHA3_512);
 
-test-xof-montecarlo-files(%shake128-montecarlo-files, &SHAKE128);
-test-xof-montecarlo-files(%shake256-montecarlo-files, &SHAKE256);
+    test-xof-montecarlo-files(%shake128-montecarlo-files, &SHAKE128);
+    test-xof-montecarlo-files(%shake256-montecarlo-files, &SHAKE256);
+    
+} else {
 
-perftest();
-perftest2();
+    skip("Will not perform Monte Carlo tests: Environment variable 'OBSCURE_MONTECARLO_TEST' is not set.");
+}
+
+if $perf-test {
+    perftest();
+    perftest2();
+} else {
+    skip("Will not execute performance tests: Environment variable 'OBSCURE_PERF_TEST' is not set.");
+}
 
 done-testing;

@@ -52,27 +52,56 @@ say $shake.squeeze(1)>>.fmt("%02x").join; # db
 
 =head2 Installation
 
-=begin code :lang<bash>
+The Raku module management tool `zef` performs module testing by default when
+installing a package. Some tests can be very slow, so you may want to skip them
+during the installation of Obscure and run them at a later stage. Use one of the
+following installation methods accordingly.
 
-# install from local directory without testing
+Install from a local directory without testing:
+
+=begin code :lang<bash>
 
 zef install --/test ./Obscure 
 
-# install verbosely from local directory with testing. Slow
+=end code
+
+Or install from a local directory with testing:
+
+=begin code :lang<bash>
 
 zef install -v --timeout=0 ./Obscure
 
-# uninstall
+=end code
+
+Or install from GitHub without testing:
+
+=begin code :lang<bash>
+
+zef install --/test https://github.com/gdncc/Obscure.git 
+
+=end code
+
+Or install from GitHub with testing:
+
+=begin code :lang<bash>
+
+zef install -v --timeout=0 https://github.com/gdncc/Obscure.git 
+
+=end code
+
+One successfully installed, you can remove Obscure as follows:
+
+=begin code :lang<bash>
 
 zef uninstall Obscure
 
 =end code
 
-=head2 Generate Documentation
+=head2 Generate Markdown Documentation from Plain Old Documentation (pod)
 
 =begin code :lang<bash>
 
-raku --doc=Markdown doc/Hashes/SHA3.rakudoc > SHA-3.md
+raku --doc=Markdown doc/Hashes/SHA3.rakudoc > doc/Hashes/SHA3.md
 
 =end code
 
@@ -81,14 +110,14 @@ raku --doc=Markdown doc/Hashes/SHA3.rakudoc > SHA-3.md
 The test-suite contains Secure Hash Algorithm-3 Validation System (SHA3VS)
 vectors: the short message, long message, and Monte Carlo (pseudorandom) tests
 for every implemented hash and XOF, plus variable-length-output tests for each
-XOF.
+XOF. Some basic performance tests are also included.
 
-
-Running all tests is slow.
+Running all tests is slow. By default, all tests except the Monte Carlo and
+performance tests are run. To run the full test suite:
 
 =begin code :lang<bash>
 
-raku -I . t/02-SHA3.rakutest |tee RESULT.txt 
+OBSCURE_MONTECARLO_TEST=1 OBSCURE_PERF_TEST=1 raku -I . t/02-SHA3.rakutest
 
 =end code
 

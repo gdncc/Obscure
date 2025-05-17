@@ -48,36 +48,54 @@ MISC NOTES
 Installation
 ------------
 
+The Raku module management tool `zef` performs module testing by default when installing a package. Some tests can be very slow, so you may want to skip them during the installation of Obscure and run them at a later stage. Use one of the following installation methods accordingly.
+
+Install from a local directory without testing:
+
 ```bash
-# install from local directory without testing
+zef install --/test ./Obscure
+```
 
-zef install --/test ./Obscure 
+Or install from a local directory with testing:
 
-# install verbosely from local directory with testing. Slow
-
+```bash
 zef install -v --timeout=0 ./Obscure
+```
 
-# uninstall
+Or install from GitHub without testing:
 
+```bash
+zef install --/test https://github.com/gdncc/Obscure.git
+```
+
+Or install from GitHub with testing:
+
+```bash
+zef install -v --timeout=0 https://github.com/gdncc/Obscure.git
+```
+
+One successfully installed, you can remove Obscure as follows:
+
+```bash
 zef uninstall Obscure
 ```
 
-Generate Documentation
-----------------------
+Generate Markdown Documentation from Plain Old Documentation (pod)
+------------------------------------------------------------------
 
 ```bash
-raku --doc=Markdown doc/Hashes/SHA3.rakudoc > SHA-3.md
+raku --doc=Markdown doc/Hashes/SHA3.rakudoc > doc/Hashes/SHA3.md
 ```
 
 Testing
 -------
 
-The test-suite contains Secure Hash Algorithm-3 Validation System (SHA3VS) vectors: the short message, long message, and Monte Carlo (pseudorandom) tests for every implemented hash and XOF, plus variable-length-output tests for each XOF.
+The test-suite contains Secure Hash Algorithm-3 Validation System (SHA3VS) vectors: the short message, long message, and Monte Carlo (pseudorandom) tests for every implemented hash and XOF, plus variable-length-output tests for each XOF. Some basic performance tests are also included.
 
-Running all tests is slow.
+Running all tests is slow. By default, all tests except the Monte Carlo and performance tests are run. To run the full test suite:
 
 ```bash
-raku -I . t/02-SHA3.rakutest |tee RESULT.txt
+OBSCURE_MONTECARLO_TEST=1 OBSCURE_PERF_TEST=1 raku -I . t/02-SHA3.rakutest
 ```
 
 AUTHOR
