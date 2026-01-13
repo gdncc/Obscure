@@ -244,7 +244,7 @@ role KECCAK-c[Capacity $capacity,
 	    for ^($!rate div 8) -> $i {
 		$!output-buffer.write-uint64($i * 8, @!A[$i], LittleEndian);
 	    }
-	    $updated-output-bytes-length = $.output-bytes-length - ($!rate - $!last-read-pos);
+            $updated-output-bytes-length = $updated-output-bytes-length - ($!rate - $!last-read-pos);
 	    $!last-read-pos = 0;
 	}
 
