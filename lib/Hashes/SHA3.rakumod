@@ -1,3 +1,5 @@
+use v6.d;
+
 unit module Obscure::Hashes::SHA3;
 
 subset Capacity of Int where *== 256 | 448 | 512 | 768 | 1024;
@@ -42,21 +44,22 @@ role KECCAK-c[Capacity $capacity,
 
     # Transient input buffer
     has Int $!buffer-written-index = 0;
-    has Buf $!buffer;
+    has buf8 $!buffer;
 
     # Output buffer
-    has Buf $!output-buffer;
+    has buf8 $!output-buffer;
 
     has SpongeState $!sponge-state = ABSORB;
 
     submethod TWEAK() {
         $!rate = self.b - $!capacity;
         $!output-bytes-length = $output-bits-length div 8;
-        $!buffer = Buf.new(0 xx self.b); # rate + capacity
-	$!output-buffer = Buf.new(0 xx $!rate); # rate
+        $!buffer = buf8.new(0 xx self.b); # rate + capacity
+	$!output-buffer = buf8.new(0 xx $!rate); # rate
         self.lane-size = self.b div 25;
     }
 
+    # TKTK unused
     method store64(Int $n) {
         gather { for ^8 { take ($n +> (8 * $_) +& 0xff) } }
     }
@@ -186,7 +189,7 @@ role KECCAK-c[Capacity $capacity,
 
     }
 
-    method absorb(Blob $input-bytes) {
+    method absorb(blob8 $input-bytes) {
         if $!sponge-state eqv SQUEEZE {
             X::AdHoc.new(:payload<SpongeWrongDirection>).throw
         }
@@ -234,7 +237,7 @@ role KECCAK-c[Capacity $capacity,
         }
 
         # squeeze
-	my $output = Buf.new;
+	my $output = buf8.new;
 	my $updated-output-bytes-length = $.output-bytes-length;
 	while ($updated-output-bytes-length + $!last-read-pos > $!rate ) {
 
@@ -244,7 +247,7 @@ role KECCAK-c[Capacity $capacity,
 	    for ^($!rate div 8) -> $i {
 		$!output-buffer.write-uint64($i * 8, @!A[$i], LittleEndian);
 	    }
-            $updated-output-bytes-length = $updated-output-bytes-length - ($!rate - $!last-read-pos);
+	    $updated-output-bytes-length = $updated-output-bytes-length - ($!rate - $!last-read-pos);
 	    $!last-read-pos = 0;
 	}
 
@@ -269,11 +272,15 @@ role KECCAK-c[Capacity $capacity,
     }
 }
 
-role HashLike[KECCAK-c $k]  {
-    has KECCAK-c $!k = $k;
+role HashLike[::KType]  {
+    has KECCAK-c $!k;
     has Bool $!finalized = False;
 
-    multi method hash(Blob $input-bytes ) {
+    submethod TWEAK() {
+        $!k = KType.new;
+    }
+
+    multi method hash(blob8 $input-bytes ) {
         $!k.absorb($input-bytes);
         my $result = $!k.squeeze();
 	$!k.reset;
@@ -284,7 +291,7 @@ role HashLike[KECCAK-c $k]  {
         samewith $input-string.encode
     }
 
-    multi method update(Blob $input-bytes) {
+    multi method update(blob8 $input-bytes) {
         $!k.absorb($input-bytes)
     }
 
@@ -308,10 +315,14 @@ role HashLike[KECCAK-c $k]  {
     }
 };
 
-role SHAKELike[KECCAK-c $k] {
-    has KECCAK-c $!k = $k;
+role SHAKELike[::KType] {
+    has KECCAK-c $!k;
 
-    multi method absorb(Blob $input-bytes) {
+    submethod TWEAK() {
+        $!k = KType.new;
+    }
+
+    multi method absorb(blob8 $input-bytes) {
         $!k.absorb($input-bytes)
     }
 
@@ -326,7 +337,7 @@ role SHAKELike[KECCAK-c $k] {
 
     # default output size if none specified
     multi method squeeze() {
-        $!k.output-bytes-length = $k.capacity;
+        $!k.output-bytes-length = $!k.capacity;
         $!k.squeeze()
     }
 
@@ -336,27 +347,10 @@ role SHAKELike[KECCAK-c $k] {
     }
 }
 
-sub SHA3_224 () is export {
-    HashLike[KECCAK-c[448, 0x06, 224].new].new
-}
-
-sub SHA3_256 () is export {
-    HashLike[KECCAK-c[512, 0x06, 256].new].new
-}
-
-sub SHA3_384 () is export {
-    HashLike[KECCAK-c[768, 0x06, 384].new].new
-}
-
-sub SHA3_512 () is export {
-    HashLike[KECCAK-c[1024, 0x06, 512].new].new
-}
-
-sub SHAKE128() is export {
-    SHAKELike[KECCAK-c[256, 0x1f, 256].new].new
-}
-
-sub SHAKE256() is export {
-    SHAKELike[KECCAK-c[512, 0x1f, 512].new].new
-}
+constant SHA3_224  is export = HashLike[KECCAK-c[448, 0x06, 224]];
+constant SHA3_256  is export = HashLike[KECCAK-c[512, 0x06, 256]];
+constant SHA3_384  is export = HashLike[KECCAK-c[768, 0x06, 384]];
+constant SHA3_512  is export = HashLike[KECCAK-c[1024, 0x06, 512]];
+constant SHAKE128  is export = SHAKELike[KECCAK-c[256, 0x1f, 256]];
+constant SHAKE256  is export = SHAKELike[KECCAK-c[512, 0x1f, 512]];
 

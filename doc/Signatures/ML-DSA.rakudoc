@@ -1,0 +1,212 @@
+=begin pod
+
+=head1 NAME
+
+Obscure::Signatures::ML-DSA
+
+=head1 DESCRIPTION
+
+A pure Raku implementation of ML-DSA (Module-Lattice-Based Digital Signature
+Algorithm) as specified in FIPS 204. It provides three parameter sets:
+ML-DSA-44, ML-DSA-65, and ML-DSA-87, offering NIST security categories 2, 3,
+and 5 respectively. It supports pure ML-DSA and prehash (HashML-DSA) modes with
+optional application context.
+
+Caution! Under no circumstances should this be used for cryptographic
+applications. This is an educational resource. The intended use of this project
+is for learning and experimenting with cryptography using Raku.
+
+=head1 SYNOPSIS
+
+=begin code :lang<raku>
+
+use Obscure::Signatures::ML-DSA;
+
+# Key generation
+my $dsa = ML_DSA_44.new;
+my $kp = $dsa.keygen;
+# $kp.public  — encoded public key (blob8)
+# $kp.private — encoded secret key (blob8)
+
+# Signing (pure ML-DSA)
+my $msg = "Hello, post-quantum world!".encode;
+my $sig = $dsa.sign(:sk($kp.private), :M($msg));
+
+# Verification
+say $dsa.verify(:pk($kp.public), :M($msg), :signature($sig)); # True
+
+# Signing with context
+my $ctx = buf8.new(0x41, 0x42); # application context, max 255 bytes
+$sig = $dsa.sign(:sk($kp.private), :M($msg), :ctx($ctx));
+say $dsa.verify(:pk($kp.public), :M($msg), :signature($sig), :ctx($ctx)); # True
+
+# Prehash ML-DSA (HashML-DSA)
+$sig = $dsa.sign(:sk($kp.private), :M($msg), :prehash-fn("SHAKE-128"));
+say $dsa.verify(:pk($kp.public), :M($msg), :signature($sig),
+                :prehash-fn("SHAKE-128")); # True
+
+# Deterministic signing (no random nonce)
+$sig = $dsa.sign(:sk($kp.private), :M($msg), :deterministic);
+
+=end code
+
+=head1 PARAMETER SETS
+
+=begin table :caption<ML-DSA Parameter Sets>
+
+                        ML-DSA-44   ML-DSA-65   ML-DSA-87
+NIST Security Category  2           3           5
+Public key (bytes)      1312        1952        2592
+Secret key (bytes)      2560        4032        4896
+Signature (bytes)       2420        3309        4627
+Raku constant           ML_DSA_44   ML_DSA_65   ML_DSA_87
+
+=end table
+
+ML-DSA-44 is suitable for most applications. ML-DSA-65 provides higher
+assurance. ML-DSA-87 provides maximum security.
+
+=head1 API REFERENCE
+
+=head2 keygen() --> KeyPair
+
+Generates a fresh key pair. Returns a C<KeyPair> object with two attributes:
+
+=item C<.public> — encoded public key (blob8)
+=item C<.private> — encoded secret key (blob8)
+
+=begin code :lang<raku>
+
+my $dsa = ML_DSA_65.new;
+my $kp = $dsa.keygen;
+
+=end code
+
+=head2 sign(:sk, :M, :ctx?, :deterministic?, :prehash-fn?) --> blob8
+
+Signs a message and returns the encoded signature.
+
+=item C<:sk> — secret key from keygen (blob8)
+=item C<:M> — message (blob8)
+=item C<:ctx> — optional application context (buf8, max 255 bytes, default empty)
+=item C<:deterministic> — optional Bool (default False); uses a zero nonce when True
+=item C<:prehash-fn> — optional Str; enables HashML-DSA mode. One of: C<"SHAKE-128">, C<"SHAKE-256">, C<"SHA3-224">, C<"SHA3-256">, C<"SHA3-384">, C<"SHA3-512">
+
+=head2 verify(:pk, :M, :signature, :ctx?, :prehash-fn?) --> Bool
+
+Verifies a signature against a message and public key. Returns C<True> if valid.
+
+=item C<:pk> — public key from keygen (blob8)
+=item C<:M> — message (blob8)
+=item C<:signature> — signature from sign (blob8)
+=item C<:ctx> — must match the context used during signing
+=item C<:prehash-fn> — must match the prehash function used during signing
+
+=head1 ERROR HANDLING
+
+=item Wrong key or signature sizes cause a Raku type constraint violation (C<X::TypeCheck>).
+=item Context longer than 255 bytes causes a subset constraint error.
+=item An unsupported prehash string fails with "Unsupported prehash algorithm".
+=item RNG failure dies with "random bit generation failed".
+
+Raku's type system enforces correct parameter sizes at method boundaries.
+Passing a blob8 of the wrong length (e.g. a ML-DSA-44 key to ML-DSA-87) will
+cause a type check exception. Wrap calls in C<try { }> blocks to handle
+gracefully.
+
+=begin code :lang<raku>
+
+# Handling errors
+my $result = try {
+    $dsa.verify(:pk($kp.public), :M($msg), :signature($bad-sig));
+}
+without $result { say "Verification failed or error: $!" }
+
+=end code
+
+=head1 MISC NOTES
+
+=head2 Installation
+
+The Raku module management tool C<zef> performs module testing by default when
+installing a package. Some tests can be very slow, so you may want to skip them
+during the installation of Obscure and run them at a later stage. Use one of the
+following installation methods accordingly.
+
+Install from a local directory without testing:
+
+=begin code :lang<bash>
+
+zef install --/test ./Obscure
+
+=end code
+
+Or install from a local directory with testing:
+
+=begin code :lang<bash>
+
+zef install -v --timeout=0 ./Obscure
+
+=end code
+
+Or install from GitHub without testing:
+
+=begin code :lang<bash>
+
+zef install --/test https://github.com/gdncc/Obscure.git
+
+=end code
+
+Or install from GitHub with testing:
+
+=begin code :lang<bash>
+
+zef install -v --timeout=0 https://github.com/gdncc/Obscure.git
+
+=end code
+
+Once successfully installed, you can remove Obscure as follows:
+
+=begin code :lang<bash>
+
+zef uninstall Obscure
+
+=end code
+
+=head2 Generate Markdown Documentation from Plain Old Documentation (pod)
+
+=begin code :lang<bash>
+
+raku --doc=Markdown doc/Signatures/ML-DSA.rakudoc > doc/Signatures/ML-DSA.md
+
+=end code
+
+=head2 Testing
+
+The test-suite validates against official NIST ACVP test vectors for all three
+parameter sets (ML-DSA-44, ML-DSA-65, ML-DSA-87). Running the full vector tests
+is very slow.
+
+=begin code :lang<bash>
+
+raku -I . t/03-ML-DSA.rakutest
+
+=end code
+
+See FIPS 204: L<https://csrc.nist.gov/pubs/fips/204/final>
+
+=head1 AUTHOR
+
+Gérald Doussot
+
+=head1 COPYRIGHT AND LICENSE
+
+Copyright (c) 2026 Gérald Doussot
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+=end pod

@@ -1,5 +1,8 @@
 use Test;
 
-plan 1;
+plan 3;
 
+use-ok "Obscure::Random";
 use-ok "Obscure::Hashes::SHA3";
+use-ok "Obscure::Signatures::ML-DSA";
+

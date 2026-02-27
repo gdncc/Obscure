@@ -1,25 +1,34 @@
 {
-    "raku" : "6.e",
+    "raku" : "6.d",
     "build-depends": [
     ],
     "authors" : [ "Gérald Doussot" ],
     "license" : "MIT License",    
     "depends": [
     ],
-    "description": "Cryptography routines.  For now it implements four cryptographic hash functions, SHA3-224, SHA3-256, SHA3-384, and SHA3-512, and two extendable-output functions (XOFs), SHAKE128 and SHAKE256 of the SHA-3 family of functions in pure Raku. It provides one-shot, and streaming APIs. Caution! Under no circumstances should this be used for cryptographic applications. This is an educational resource. The intended use of this project is for learning and experimenting with cryptography using Raku.",
+    "description": "Cryptography routines. It implements four cryptographic hash functions, SHA3-224, SHA3-256, SHA3-384, and SHA3-512, and two extendable-output functions (XOFs), SHAKE128 and SHAKE256 of the SHA-3 family of functions in pure Raku with one-shot and streaming APIs. It also implements ML-DSA (FIPS 204), a post-quantum digital signature scheme with three parameter sets (ML-DSA-44, ML-DSA-65, ML-DSA-87) supporting pure and prehash (HashML-DSA) modes. Caution! Under no circumstances should this be used for cryptographic applications. This is an educational resource. The intended use of this project is for learning and experimenting with cryptography using Raku.",
     "name": "Obscure",
     "provides": {
-	"Obscure::Hashes::SHA3": "lib/Hashes/SHA3.rakumod"
+	"Obscure::Random": "lib/Random.rakumod",
+	"Obscure::RandomInternal::macOS": "lib/RandomInternal/macOS.rakumod",
+	"Obscure::RandomInternal::linux": "lib/RandomInternal/linux.rakumod",	
+	"Obscure::Completion": "lib/Completion.rakumod",
+	"Obscure::Hashes::SHA3": "lib/Hashes/SHA3.rakumod",
+	"Obscure::Signatures::ML-DSA": "lib/Signatures/ML-DSA.rakumod"	
     },
     "resources": [
     ],
     "test-depends": [
     ],
-    "version": "0.0.1",
+    "version": "0.0.2",
     "source-url" : "https://github.com/gdncc/Obscure.git",
     "tags" : [
         "cryptography",
-        "SHA-3"
+        "SHA-3",
+        "ML-DSA",
+        "post-quantum",
+        "digital-signatures",
+        "FIPS-204"
     ]
 }
 
