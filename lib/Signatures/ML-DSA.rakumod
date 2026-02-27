@@ -958,7 +958,7 @@ multi sub infix:<->(NTTElement $â, NTTElement $b̂ --> NTTElement) {
 }
 
 multi sub infix:<->(Vec[NTTElement,K] $a, Vec[NTTElement,K] $b --> Vec[NTTElement,K]) {
-    Vec[NTTElement,K,:dim($a.dim)].new: elements => [$a.elements <<->> $b.elements]
+    Vec[NTTElement,K,:dim($a.dim)].new: elements => [$a.elements «-» $b.elements]
 }
 
 # Algorithm 45 MultiplyNTT
@@ -1036,20 +1036,20 @@ multi sub prefix:<->(Vec[RqElement,K] $a --> Vec[RqElement,K]) {
 
 # Mixed → RqElement (promotion rule from spec)
 multi sub infix:<+>(Vec[RqElement,K] $a, Vec[RingElement,K] $b --> Vec[RqElement,K]) {
-    Vec[RqElement,K,:dim($a.dim)].new: elements => [$a.elements <<+>> $b.elements]
+    Vec[RqElement,K,:dim($a.dim)].new: elements => [$a.elements «+» $b.elements]
 }
 
 # Mixed → RqElement (promotion rule from spec)
 multi sub infix:<+>(Vec[RingElement,L] $a, Vec[RqElement,L] $b --> Vec[RqElement,L]) {
-    Vec[RqElement,L,:dim($a.dim)].new: elements => [$a.elements <<+>> $b.elements]
+    Vec[RqElement,L,:dim($a.dim)].new: elements => [$a.elements «+» $b.elements]
 }
 
 multi sub infix:<->(Vec[RqElement,K] $a, Vec[RqElement,K] $b --> Vec[RqElement,K]) {
-    Vec[RqElement,K,:dim($a.dim)].new: elements => [$a.elements <<->> $b.elements]
+    Vec[RqElement,K,:dim($a.dim)].new: elements => [$a.elements «-» $b.elements]
 }
 
 multi sub infix:<+>(Vec[RqElement,K] $a, Vec[RqElement,K] $b --> Vec[RqElement,K]) {
-    Vec[RqElement,K,:dim($a.dim)].new: elements => [$a.elements <<+>> $b.elements]
+    Vec[RqElement,K,:dim($a.dim)].new: elements => [$a.elements «+» $b.elements]
 }
 
 # mod±2𝑑
