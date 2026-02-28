@@ -69,6 +69,8 @@ role KeyPair[::PK, ::SK] {
     has SK $.private;
 
     submethod BUILD(:$!public, :$!private) {};
+
+	method gist(--> Str) { "KeyPair(public: {$!public.elems} bytes, private: <redacted>)" }
 }
 
 subset FieldElement of Int where 0 ≤ * < q;
@@ -142,7 +144,7 @@ role ML-DSA[
     ::LambdaDivFourSizedType,
     ::EncodedWTildeType,
     ::CoeffEtaType, 
-    # 4. Parameter Sets 
+    # 4. Parameter Sets
     UInt :$k where ($_ == 4 | 6 | 8),
     UInt :$l where ($_ == 4 | 5 | 7),
     UInt :$𝜂 where ($_ == 2 | 4 ),

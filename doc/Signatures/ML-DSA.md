@@ -105,7 +105,7 @@ Verifies a signature against a message and public key. Returns `True` if valid.
 ERROR HANDLING
 ==============
 
-  * Wrong key or signature sizes cause a Raku type constraint violation (`X::TypeCheck`).
+  * Wrong key or signature sizes cause a multi-dispatch failure (`X::Multi::NoMatch`) because the blob does not satisfy the subset type constraint.
 
   * Context longer than 255 bytes causes a subset constraint error.
 
@@ -113,7 +113,7 @@ ERROR HANDLING
 
   * RNG failure dies with "random bit generation failed".
 
-Raku's type system enforces correct parameter sizes at method boundaries. Passing a blob8 of the wrong length (e.g. a ML-DSA-44 key to ML-DSA-87) will cause a type check exception. Wrap calls in `try { }` blocks to handle gracefully.
+Raku's type system enforces correct parameter sizes at method boundaries. Passing a blob8 of the wrong length (e.g. a ML-DSA-44 key to ML-DSA-87) will cause a dispatch exception. Wrap calls in `try { }` blocks to handle gracefully.
 
 ```raku
 # Handling errors

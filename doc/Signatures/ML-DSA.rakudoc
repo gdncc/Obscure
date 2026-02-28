@@ -104,14 +104,14 @@ Verifies a signature against a message and public key. Returns C<True> if valid.
 
 =head1 ERROR HANDLING
 
-=item Wrong key or signature sizes cause a Raku type constraint violation (C<X::TypeCheck>).
+=item Wrong key or signature sizes cause a multi-dispatch failure (C<X::Multi::NoMatch>) because the blob does not satisfy the subset type constraint.
 =item Context longer than 255 bytes causes a subset constraint error.
 =item An unsupported prehash string fails with "Unsupported prehash algorithm".
 =item RNG failure dies with "random bit generation failed".
 
 Raku's type system enforces correct parameter sizes at method boundaries.
 Passing a blob8 of the wrong length (e.g. a ML-DSA-44 key to ML-DSA-87) will
-cause a type check exception. Wrap calls in C<try { }> blocks to handle
+cause a dispatch exception. Wrap calls in C<try { }> blocks to handle
 gracefully.
 
 =begin code :lang<raku>
