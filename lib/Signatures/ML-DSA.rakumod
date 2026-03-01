@@ -96,13 +96,6 @@ role Vec[::ElementType, DimTag $tag, UInt :$dim] {
     method dim-tag() { $tag } 
 }
 
-# 2-tuple for expanded s
-role ExpandedS[::V1, ::V2] {
-    has V1 $.s1;
-    has V2 $.s2;
-}
-
-# Another 2-tuple for other uses/clarity
 role TwoTuple[::V1, ::V2] {
     has V1 $.v1;
     has V2 $.v2;
@@ -225,7 +218,7 @@ role ML-DSA[
 	my $expanded-s = self!expand-s($rhoʹ);
 
 	# 5: 𝐭 ← NTT−1 (𝐀̂ ∘ NTT(𝐬1 )) + 𝐬2
-	my $t = self.ntt-inv($Â ∘ self.ntt($expanded-s.s1)) + $expanded-s.s2;
+	my $t = self.ntt-inv($Â ∘ self.ntt($expanded-s.v1)) + $expanded-s.v2;
 
 	# 6: (𝐭1 , 𝐭0 ) ← Power2Round(𝐭)
 	my $decomposed-t = self.power2-round($t);
@@ -237,7 +230,7 @@ role ML-DSA[
 	my $tr = self!h($pk, 64);
 
 	# 10: 𝑠𝑘 ← skEncode(𝜌, 𝐾, 𝑡𝑟, 𝐬1 , 𝐬2 , 𝐭0 )
-	my $sk = self!sk-encode($rho, $K, $tr, $expanded-s.s1, $expanded-s.s2, $decomposed-t.v1);
+	my $sk = self!sk-encode($rho, $K, $tr, $expanded-s.v1, $expanded-s.v2, $decomposed-t.v1);
 
 	KeyPair[EncodedPublicKeyType,EncodedPrivateKeyType].new(public => $pk, private => $sk)
     }
@@ -483,7 +476,7 @@ role ML-DSA[
     }
     
     # Algorithm 33 ExpandS
-    method !expand-s(Seed64 $rho --> ExpandedS[Vec[RingElement,L], Vec[RingElement,K]]) {
+    method !expand-s(Seed64 $rho --> TwoTuple[Vec[RingElement,L], Vec[RingElement,K]]) {
 	my $s1 = Vec[RingElement, L, :dim($l)]
 		    .new(elements =>
 			 (^$l).map: -> $r {
@@ -493,8 +486,8 @@ role ML-DSA[
 		    .new(elements => (^$k).map: -> $r {
 				self!rej-bounded-poly(blob8.new(|$rho, |pack("S", $r + $l)))
 			    });
-	ExpandedS[Vec[RingElement,L,:dim($l)], Vec[RingElement,K, :dim($k)]]
-	.new(s1 => $s1, s2 => $s2);
+	TwoTuple[Vec[RingElement,L,:dim($l)], Vec[RingElement,K, :dim($k)]]
+	.new(v1 => $s1, v2 => $s2);
     }
     
     # Algorithm 34 ExpandMask
