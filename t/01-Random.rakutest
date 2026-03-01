@@ -45,11 +45,11 @@ if $*DISTRO.name eq 'macos' {
     # getentropy()
     if   $*DISTRO.version >= v10.12.0 {
         my $too-large-blob = buf8.allocate(257);
-        ok Unsuccessful ~~ secure-random($too-large-blob), 'Cannot getentropy() on more than 256 bytes';
+        ok UnsuccessfulNoErrorCode ~~ secure-random($too-large-blob), 'Cannot getentropy() on more than 256 bytes';
 
         ok Successful ~~ test-getentropy-internal-macos(256);
         ok Successful ~~ test-getentropy-internal-macos(0);
-        ok Unsuccessful ~~ test-getentropy-internal-macos(257);
+        ok UnsuccessfulNoErrorCode ~~ test-getentropy-internal-macos(257);
 
         my $buf256b = buf8.allocate(256);
         Obscure::RandomInternal::macOS::read-random-internal($buf256b);

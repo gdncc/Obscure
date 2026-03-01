@@ -256,7 +256,7 @@ role KECCAK-c[Capacity $capacity,
 	    $!last-read-pos = $!last-read-pos + $updated-output-bytes-length;
 	}
 
-	$output;
+	blob8.new: $output;
 	
     }
     

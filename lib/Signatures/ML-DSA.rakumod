@@ -46,14 +46,14 @@ constant @zetas = 0, 4808194, 3765607, 3761513, 5178923, 5496691, 5234739, 51789
 		     6195333, 3123762, 2358373, 6187330, 5365997, 6663603, 2926054, 7987710,
 		     8077412, 3531229, 4405932, 4606686, 1900052, 7598542, 1054478, 7648983 ;
 
-subset Seed32 of buf8 where *.elems == 32;
-subset Seed34 of buf8 where *.elems == 34;
-subset Seed64 of buf8 where *.elems == 64;
-subset Seed66 of buf8 where *.elems == 66;
+subset Seed32 of blob8 where *.elems == 32;
+subset Seed34 of blob8 where *.elems == 34;
+subset Seed64 of blob8 where *.elems == 64;
+subset Seed66 of blob8 where *.elems == 66;
 
-subset Context is export of buf8 where *.elems ≤ 255; 
+subset Context is export of blob8 where *.elems ≤ 255;
 
-subset ByteArray32 of buf8 where *.elems == 32;
+subset ByteArray32 of blob8 where *.elems == 32;
 
 subset CoeffEta2 of Int where -2 ≤ * ≤ 2;
 subset CoeffEta4 of Int where -4 ≤ * ≤ 4;
@@ -158,9 +158,9 @@ role ML-DSA[
 
     # Algorithm 1 ML-DSA.KeyGen
     method keygen( --> KeyPair[EncodedPublicKeyType,EncodedPrivateKeyType])  {
-	my Seed32 $xi = buf8.allocate(32);
+	my $xi = buf8.allocate(32);
 	secure-random($xi) ~~ Successful || die "random bit generation failed"; # does not use an approved RNG
-	self!keygen-internal($xi)
+	self!keygen-internal(Seed32.new: $xi)
     }
 
     # multi method crash if invalid paramets e.g., for when ctx.elems > 255
@@ -214,7 +214,7 @@ role ML-DSA[
     # Algorithm 6 ML-DSA.KeyGen_internal
     method !keygen-internal(Seed32 $xi --> KeyPair[EncodedPublicKeyType,EncodedPrivateKeyType]) {
 	# 1: (𝜌, 𝜌′ , 𝐾) ∈ 𝔹32 × 𝔹64 × 𝔹32 ← H(𝜉||IntegerToBytes(𝑘, 1)||IntegerToBytes(ℓ, 1), 128)
-	my $expanded-seed = buf8.new(|$xi, $k, $l);
+	my $expanded-seed = blob8.new(|$xi, $k, $l);
 	my $output = self!h($expanded-seed, 128);
 	my ($rho, $rhoʹ, $K) = $output.subbuf(0, 32), $output.subbuf(32, 64), $output.subbuf(96, 32);
 
@@ -476,7 +476,7 @@ role ML-DSA[
 	# Use X (cross) to avoid nested loop and hyper for potential parallelism
 	# Well for fun really
 	(^$k X ^$l).hyper.map: -> ($r, $s) {
-            @Â[$r; $s] = self!rej-ntt-poly(buf8.new(|$rho, $s, $r));
+            @Â[$r; $s] = self!rej-ntt-poly(blob8.new(|$rho, $s, $r));
 	}
 	
 	@Â but NTTMatrix[:k($k), :l($l)]
@@ -487,11 +487,11 @@ role ML-DSA[
 	my $s1 = Vec[RingElement, L, :dim($l)]
 		    .new(elements =>
 			 (^$l).map: -> $r {
-				self!rej-bounded-poly(buf8.new(|$rho, |pack("S", $r)))
+				self!rej-bounded-poly(blob8.new(|$rho, |pack("S", $r)))
 			    });
 	my $s2 = Vec[RingElement,K, :dim($k)]
 		    .new(elements => (^$k).map: -> $r {
-				self!rej-bounded-poly(buf8.new(|$rho, |pack("S", $r + $l)))
+				self!rej-bounded-poly(blob8.new(|$rho, |pack("S", $r + $l)))
 			    });
 	ExpandedS[Vec[RingElement,L,:dim($l)], Vec[RingElement,K, :dim($k)]]
 	.new(s1 => $s1, s2 => $s2);
@@ -503,7 +503,7 @@ role ML-DSA[
 
 	Vec[RingElement,L, :dim($l)]
 	.new(elements =>  (^$l).map: -> $r {
-		    my $rhoʹ = buf8.new(|$rho.subbuf(0,64), |pack("S", $mu + $r ));
+		    my $rhoʹ = blob8.new(|$rho.subbuf(0,64), |pack("S", $mu + $r ));
 		    my $v = self!h($rhoʹ, 32 * $c);
 		    self!bit-unpack($v, $ɣ1 -1, $ɣ1)
 		})
@@ -591,12 +591,12 @@ role ML-DSA[
 	# (not implemented/not required)
 
     # Algorithm 12 BitsToBytes
-    method !bits-to-bytes(@y where .all ~~ 0 | 1 --> buf8) {
+    method !bits-to-bytes(@y where .all ~~ 0 | 1 --> blob8) {
 	my $z = buf8.allocate((@y.elems + 7) div 8 );
 	for @y.kv -> $i, $bit {
             $z[$i div 8] +|= $bit +< ($i % 8);
 	}
-	$z
+	blob8.new: $z
     }
 
     # Algorithm 13 BytesToBits
@@ -633,7 +633,7 @@ role ML-DSA[
     }
 
     # Algorithm 16 SimpleBitPack
-    method !simple-bit-pack(RingElement $w, Int:D $b where * >= 0 --> buf8) {
+    method !simple-bit-pack(RingElement $w, Int:D $b where * >= 0 --> blob8) {
 	my $bitlen = ENTER {bitlen($b)}
 	POST { *.elems == 32 * $bitlen }
 	self!bits-to-bytes(
@@ -644,7 +644,7 @@ role ML-DSA[
     }
 
     # Algorithm 17 BitPack
-    method !bit-pack(RingElement $w, Int:D $a where * >= 0, Int:D $b where * >= 0 --> buf8) {
+    method !bit-pack(RingElement $w, Int:D $a where * >= 0, Int:D $b where * >= 0 --> blob8) {
 	my $bitlen = ENTER { bitlen($a + $b)};
 	POST { *.elems == $bitlen * 32} ;
 	self!bits-to-bytes(
@@ -688,7 +688,7 @@ role ML-DSA[
     }
 
     # Algorithm 20 HintBitPack
-    method !hint-bit-pack(Vec[R2Element,K] $h --> buf8) {
+    method !hint-bit-pack(Vec[R2Element,K] $h --> blob8) {
 	POST { $_.elems == $ω + $k }
 	my $y = buf8.allocate($ω + $k);
 	my $index = 0;
@@ -700,13 +700,13 @@ role ML-DSA[
             }
             $y[$ω + $i] = $index;
 	}
-	$y
+	blob8.new: $y
     }
     
 
     # Algorithm 21 HintBitUnpack
     # ⚠ May fail
-    method !hint-bit-unpack(buf8 $y where *.elems == ($ω + $k) --> Vec[R2Element,K]) {
+    method !hint-bit-unpack(blob8 $y where *.elems == ($ω + $k) --> Vec[R2Element,K]) {
 	my  $h = Vec[R2Element,K,:dim($k)].new(elements => [R2Element.zero xx $k]);
 	my $index = 0;
 	for ^$k -> $i {
@@ -740,7 +740,7 @@ role ML-DSA[
 	my $t1 = Vec[RingElement,K,:dim($k)].new(elements => RingElement.zero xx $k);
 	my $chunk-size = (bitlen(q - 1) - d) * 32;
 	my $rho = Seed32.new: $pk.subbuf(0, 32);
-	my @z = $pk.subbuf(32).rotor($chunk-size).map({ buf8.new($_) });
+	my @z = $pk.subbuf(32).rotor($chunk-size).map({ blob8.new($_) });
 
 	for ^$k -> $i {
             $t1.elements[$i] = self!simple-bit-unpack(@z[$i],  t1-max);
@@ -753,7 +753,7 @@ role ML-DSA[
     method !sk-encode(Seed32 $rho, Seed32 $K, Seed64 $tr,
 		      Vec[RingElement,L] $s1, Vec[RingElement,K] $s2,
 		      Vec[RingElement,K] $t0 --> EncodedPrivateKeyType) {
-	my buf8 $sk = buf8.new(|$rho, |$K, |$tr);
+	my $sk = buf8.new(|$rho, |$K, |$tr);
 	for ^$l -> $i { $sk.append: self!bit-pack($s1.elements[$i], $𝜂, $𝜂) }
 	for ^$k -> $i { $sk.append: self!bit-pack($s2.elements[$i], $𝜂, $𝜂 ) }
 	for ^$k -> $i { $sk.append: self!bit-pack($t0.elements[$i], 1 +< (d - 1) - 1 , 1 +< (d - 1)) }
@@ -775,7 +775,7 @@ role ML-DSA[
 	my Int $amount = 32 * bitlen(2*$𝜂);
 	
 	for ^$l -> $i {
-	    $s1.elements[$i] = self!bit-unpack($sk.subbuf($offset + $amount * $i,$amount), $𝜂, $𝜂); 
+	    $s1.elements[$i] = self!bit-unpack($sk.subbuf($offset + $amount * $i,$amount), $𝜂, $𝜂);
 	}
 
 	$offset = $offset + $amount * $l;
@@ -809,7 +809,7 @@ role ML-DSA[
 	my $sigma = buf8.new($c̃);
 	for ^$l -> $i {$sigma.append: self!bit-pack($z.elements[$i], $ɣ1 - 1, $ɣ1) };
 	$sigma.append: |self!hint-bit-pack($h);
-	$sigma
+	blob8.new: $sigma
     }
 
     # Algorithm 27 sigDecode
@@ -817,8 +817,8 @@ role ML-DSA[
 	my $z = Vec[RingElement,L,:dim($l)].new(elements =>  RingElement.zero xx $l);
 	my $c̃ = LambdaDivFourSizedType.new: $sigma.subbuf(0, lambda-div-four($λ));
 	my $chunk-size = 32 * (1 + bitlen($ɣ1 - 1));
-	my @x = $sigma.subbuf(lambda-div-four($λ)).rotor($chunk-size).map({buf8.new($_)});
-	my $y = buf8.new: $sigma.subbuf($sigma.elems - $ω - $k);
+	my @x = $sigma.subbuf(lambda-div-four($λ)).rotor($chunk-size).map({blob8.new($_)});
+	my $y = blob8.new: $sigma.subbuf($sigma.elems - $ω - $k);
 	for ^$l -> $i {
 	    $z.elements[$i] = self!bit-unpack(@x[$i], $ɣ1 - 1, $ɣ1);
 	}
@@ -847,7 +847,7 @@ role ML-DSA[
 	
 	for ^$k -> $i {
             my (@lt1s, @lt0s);
-            
+
             for ^256 -> $j {
 		my $decomposed-r = self.power2-round($r.elements[$i].coeffs[$j]);
 		@lt1s.push: $decomposed-r.v2;
@@ -976,16 +976,16 @@ multi sub infix:<∘>(NTTElement $â, Vec[NTTElement, K] $b̂ --> Vec[NTTElement
 
 # Algorithm 48 MatrixVectorNTT
 # This is the only operation that takes a L length vector and return a K length vector
-multi sub infix:<∘>(NTTMatrix $M̂, Vec[NTTElement, L] $v̂ --> Vec[NTTElement,K]) {
-    my ($dim-k,$dim-l) = $M̂.shape;
-    Vec[NTTElement,K, :dim($dim-k)].new:
+multi sub infix:<∘>(NTTMatrix $M̂, Vec[NTTElement, L] $v̂ --> Vec[NTTElement, K]) {
+    my ($dim-k, $dim-l) = $M̂.shape;
+    Vec[NTTElement, K, :dim($dim-k)].new:
     elements =>
-	     (^$dim-k).map: -> $i {
-	(^$dim-l).map(-> $j
-		      {
-			  $M̂[$i;$j] ∘ $v̂.elements[$j]
-		      })
-	.reduce: { $^a + $^b }
+    (^$dim-k).map: -> $i {
+        (^$dim-l).map(-> $j
+            {
+                $M̂[$i;$j] ∘ $v̂.elements[$j]
+        })
+            .reduce: { $^a + $^b }
     }
 }
 
