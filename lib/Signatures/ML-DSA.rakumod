@@ -588,11 +588,8 @@ role ML-DSA[
     }
 
     # Algorithm 11 IntegerToBytes
-    method !integer-to-bytes(Int:D $x where * ≥ 0, Int:D $α where * > 0 --> buf8) {
-	POST { $_.elems == $α }
-	buf8.new: (^$α).map: { ($x +> $_) +& 1 }
-    }
-    
+	# (not implemented/not required)
+
     # Algorithm 12 BitsToBytes
     method !bits-to-bytes(@y where .all ~~ 0 | 1 --> buf8) {
 	my $z = buf8.allocate((@y.elems + 7) div 8 );
@@ -679,7 +676,7 @@ role ML-DSA[
 	# inline check, as Raku processes signature parameters left to right
 	# one can't reference $a and $b before they're declared
 	# and we dont want to change the order of arguments
-	fail "Expected {bitlen($a, $b) * 32} bytes, got {$v.elems}" unless $v.elems == bitlen($a + $b) * 32;
+	fail "Expected {bitlen($a + $b) * 32} bytes, got {$v.elems}" unless $v.elems == bitlen($a + $b) * 32;
 	my @coeffs;
 	my $c = bitlen($a + $b);
 	my @z = self!bytes-to-bits($v);
@@ -809,7 +806,7 @@ role ML-DSA[
 
     # Algorithm 26 sigEncode
     method !sig-encode(LambdaDivFourSizedType $c̃, Vec[RingElement,L] $z, Vec[R2Element,K] $h --> EncodedSignatureType) {
-	my $sigma = $c̃;
+	my $sigma = buf8.new($c̃);
 	for ^$l -> $i {$sigma.append: self!bit-pack($z.elements[$i], $ɣ1 - 1, $ɣ1) };
 	$sigma.append: |self!hint-bit-pack($h);
 	$sigma
