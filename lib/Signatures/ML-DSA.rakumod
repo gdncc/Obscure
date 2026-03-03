@@ -156,7 +156,7 @@ role ML-DSA[
 	self!keygen-internal(Seed32.new: $xi)
     }
 
-    # multi method crash if invalid paramets e.g., for when ctx.elems > 255
+    # multi method crash if invalid parameters e.g., for when ctx.elems > 255
     proto method sign(:$deterministic = False, :$rnd-value, |) is export() {
 	my $*rnd = $rnd-value // buf8.allocate(32); # dynamic variable that multi sign methods can use
 	unless $deterministic {
@@ -769,12 +769,14 @@ role ML-DSA[
 	
 	for ^$l -> $i {
 	    $s1.elements[$i] = self!bit-unpack($sk.subbuf($offset + $amount * $i,$amount), $𝜂, $𝜂);
+	    fail "skDecode: s1[$i] has coefficient outside [-η, η]" unless all($s1.elements[$i].coeffs) ~~ -$𝜂..$𝜂;
 	}
 
 	$offset = $offset + $amount * $l;
 	
 	for ^$k -> $i {
-	    $s2.elements[$i] = self!bit-unpack($sk.subbuf($offset+$amount * $i,$amount), $𝜂, $𝜂); 
+	    $s2.elements[$i] = self!bit-unpack($sk.subbuf($offset+$amount * $i,$amount), $𝜂, $𝜂);
+	    fail "skDecode: s2[$i] has coefficient outside [-η, η]" unless all($s2.elements[$i].coeffs) ~~ -$𝜂..$𝜂;
 	}
 
 	$offset = $offset + $amount * $k;
