@@ -1,0 +1,739 @@
+use Test;
+use lib $?FILE.IO.parent.add('lib');
+use WycheproofHelper;
+use Obscure::Signatures::ML-DSA;
+use Obscure::Random;
+use experimental :pack;
+
+my $keygen-file := "t/data/Signatures/ML-DSA/ML-DSA-keyGen-FIPS204/internalProjection.json";
+my $siggen-file := "t/data/Signatures/ML-DSA/ML-DSA-sigGen-FIPS204/internalProjection.json";
+my $sigver-file := "t/data/Signatures/ML-DSA/ML-DSA-sigVer-FIPS204/internalProjection.json";
+
+sub emit-test-cases-keygen($filename) {
+	my $parameterSet; # ML-DSA-44, ML-DSA-65, ML-DSA-87
+	my $tcId;
+	my $seed;
+	my $pk;
+	my $sk;
+    
+	for $filename.IO.lines -> $line {
+		if $line ~~ /'parameterSet": "' (.*) '"'/ {
+			$parameterSet = "$0";
+		}
+		if $line ~~ /'tcId": ' (.*) ','/ {
+			$tcId = "$0";
+		}
+		if $line ~~ /'seed": "' (.*) '"'/ {
+			$seed = "$0";
+		}
+		if $line ~~ /'pk": "' (.*) '"'/ {
+			$pk = "$0";
+		}
+		if $line ~~ /'sk": "' (.*) '"'/ {
+			$sk = "$0";
+			emit ($parameterSet, $tcId, $seed, $pk, $sk);
+		}
+	}
+}
+
+sub emit-test-cases-siggen($filename) {
+	my $parameterSet;
+	my Bool $deterministic;
+	my $signatureInterface;
+	my $preHash;
+	my Bool $externalMu;
+	my $cornerCase;
+	my $tcId;
+	my $sk;
+	my $pk;
+	my $mu;
+	my $message;
+	my $rnd;
+	my $context;
+	my $hashAlg;
+	my $signature;
+
+	for $filename.IO.lines -> $line {
+		if $line ~~ /'parameterSet": "' (.*) '"'/ {
+			$parameterSet = "$0";
+		}
+		if $line ~~ /'deterministic": ' (\w+)/ {
+			$deterministic = "$0" eqv "true";
+		}
+		if $line ~~ /'signatureInterface": "' (.*) '"'/ {
+			$signatureInterface = "$0";
+		}
+		if $line ~~ /'preHash": "' (.*) '"'/ {
+			$preHash = "$0";
+		}
+		if $line ~~ /'externalMu": ' (\w+)/ {
+			$externalMu = "$0" eqv "true";
+		}
+		if $line ~~ /'cornerCase": "' (.*) '"'/ {
+			$cornerCase = "$0";
+		}
+		if $line ~~ /'tcId": ' (\d+)/ {
+			$tcId = "$0";
+			$pk = "";
+			$mu = "";
+			$message = "";
+			$rnd = "";
+			$context = "";
+		}
+		if $line ~~ /'sk": "' (.*) '"'/ {
+			$sk = "$0";
+		}
+		if $line ~~ /'pk": "' (.*) '"'/ {
+			$pk = "$0";
+		}
+		if $line ~~ /'mu": "' (.*) '"'/ {
+			$mu = "$0";
+		}
+		if $line ~~ /'message": "' (.*) '"'/ {
+			$message = "$0";
+		}
+	
+		if $line ~~ /'rnd": "' (.*) '"'/ {
+
+			$rnd = "$0";
+		}
+		if $line ~~ /'context": "' (.*) '"'/ {
+			$context = "$0";
+	    
+		}
+		if $line ~~ /'hashAlg": "' (.*) '"'/ {
+			$hashAlg = "$0";
+		}
+		if $line ~~ /'signature": "' (.*) '"'/ {
+			$signature = "$0";
+			emit ($parameterSet, $deterministic, $signatureInterface, $preHash, $externalMu, $cornerCase, $tcId, $sk, $pk, $mu, $message, $rnd, $context, $hashAlg, $signature);
+		}
+	}
+}
+
+my %supported-prehash = set <SHAKE-128 SHAKE-256 SHA3-224 SHA3-256 SHA3-384 SHA3-512>;
+
+sub test-siggen($file) {
+	# we expose ByteArray32 from ML-DSA to facilitate testing of provided $rnd values
+	subset ByteArray32 of buf8 where *.elems == 32;
+	my $supply = supply {
+		emit-test-cases-siggen($file);
+	}
+	$supply.tap: {
+		my ($parameterSet, $deterministic, $signatureInterface, $preHash, $externalMu, $cornerCase, $tcId, $sk, $pk, $mu, $message, $rnd, $context, $hashAlg, $signature) = $_;
+
+		my $mldsa;
+		given $parameterSet {
+			when 'ML-DSA-44' { $mldsa = ML_DSA_44.new; }
+			when 'ML-DSA-65' { $mldsa = ML_DSA_65.new; }
+			when 'ML-DSA-87' { $mldsa = ML_DSA_87.new; }
+			default { die "could not parse parameter set" }
+		}
+
+		my $sk-blob = blob8.new(pack("H*", $sk));
+		my $pk-blob = blob8.new(pack("H*", $pk));
+		my $msg-blob = $externalMu ??  blob8.new(pack("H*", $mu)) !! blob8.new(pack("H*", $message));
+		my $signature-blob = blob8.new(pack("H*", $message));
+		my $rnd-blob = $deterministic ?? buf8.allocate(32) !! ByteArray32.new(pack("H*", $rnd)); # internal
+		my $context-blob = blob8.new(pack("H*", $context));
+		my $computed-sig;
+
+		given  $signatureInterface {
+			when "external" {
+				if $deterministic eq False  && $rnd-blob.elems > 0 {
+					$deterministic = True;
+
+					##skip "ML-DSA-SigGen-FIPS204 ($parameterSet) tcID: $tcId ($signatureInterface, custom rnd)";
+				}
+		
+				given $preHash {
+					when "pure"	 {
+						$computed-sig = $mldsa.sign(:sk($sk-blob), :M($msg-blob), :ctx(Context.new($context-blob)),
+							:deterministic($deterministic), :rnd-value($rnd-blob));
+					}
+					when "preHash" {
+						if $hashAlg ∈ %supported-prehash {
+							$computed-sig = $mldsa.sign(:sk($sk-blob), :M($msg-blob), :ctx(Context.new($context-blob)),
+								:deterministic($deterministic), :prehash-fn($hashAlg), :rnd-value($rnd-blob));
+						} else {
+							skip "ML-DSA-SigGen-FIPS204 ($parameterSet) tcID: $tcId ($signatureInterface, $hashAlg)";
+							next;
+						}
+
+					}
+
+					default {die "should not happen?" }
+				}
+		
+			}
+			when "internal" {
+				my $sign-internal = $mldsa.^find_private_method: 'sign-internal';
+				$computed-sig = $sign-internal($mldsa, $sk-blob, $msg-blob, $rnd-blob, $externalMu);
+			}
+			default { die "should not be reachable code" }
+		}
+		ok ($computed-sig>>.fmt("%02X").join eqv $signature), "ML-DSA-SigGen-FIPS204 ($parameterSet) tcID: $tcId ($signatureInterface)";
+	
+	}
+
+}
+
+sub test-keygen($file) {
+	my $supply = supply {
+		emit-test-cases-keygen($file);
+	}
+	$supply.tap: {
+		my ($parameterSet, $tcId, $seed, $test-pk, $test-sk) = $_;
+		my $mldsa;
+		given $parameterSet {
+			when 'ML-DSA-44' { $mldsa = ML_DSA_44.new; }
+			when 'ML-DSA-65' { $mldsa = ML_DSA_65.new; }
+			when 'ML-DSA-87' { $mldsa = ML_DSA_87.new; }
+			default { die "could not parse parameter set" }
+		}
+
+		# get the private method from Role
+		my $keygen-internal := $mldsa.^find_private_method: 'keygen-internal';
+
+		my $seed-value = buf8.new: pack("H*", $seed);
+
+		my $key-pair = $keygen-internal($mldsa, $seed-value);
+	
+		ok ($key-pair.public>>.fmt("%02X").join eqv $test-pk), "ML-DSA-keyGen-FIPS204 ($parameterSet) tcID: $tcId public key is identical";
+		ok ($key-pair.private>>.fmt("%02X").join eqv $test-sk), "ML-DSA-keyGen-FIPS204 ($parameterSet) tcID: $tcId private key is identical";
+	}
+
+}
+
+sub emit-test-cases-sigver($filename) {
+	my $parameterSet;
+	my $signatureInterface;
+	my $preHash;
+	my Bool $externalMu;
+	my $tcId;
+	my Bool $testPassed;
+	my $pk;
+	my $mu;
+	my $message;
+	my $context;
+	my $hashAlg;
+	my $signature;
+	my $reason;
+
+	for $filename.IO.lines -> $line {
+		if $line ~~ /'parameterSet": "' (.*) '"'/ {
+			$parameterSet = "$0";
+		}
+		if $line ~~ /'signatureInterface": "' (.*) '"'/ {
+			$signatureInterface = "$0";
+		}
+		if $line ~~ /'preHash": "' (.*) '"'/ {
+			$preHash = "$0";
+		}
+		if $line ~~ /'externalMu": ' (\w+)/ {
+			$externalMu = "$0" eqv "true";
+		}
+		if $line ~~ /'tcId": ' (\d+)/ {
+			$tcId = "$0";
+			$pk = "";
+			$mu = "";
+			$message = "";
+			$context = "";
+		}
+		if $line ~~ /'testPassed": ' (\w+)/ {
+			$testPassed = "$0" eqv "true";
+		}
+		if $line ~~ /'pk": "' (.*) '"'/ {
+			$pk = "$0";
+		}
+		if $line ~~ /'mu": "' (.*) '"'/ {
+			$mu = "$0";
+		}
+		if $line ~~ /'message": "' (.*) '"'/ {
+			$message = "$0";
+		}
+		if $line ~~ /'context": "' (.*) '"'/ {
+			$context = "$0";
+		}
+		if $line ~~ /'hashAlg": "' (.*) '"'/ {
+			$hashAlg = "$0";
+		}
+		if $line ~~ /'signature": "' (.*) '"'/ {
+			$signature = "$0";
+		}
+		if $line ~~ /'reason": "' (.*) '"'/ {
+			$reason = "$0";
+			emit ($parameterSet, $signatureInterface, $preHash, $externalMu,
+				$tcId, $testPassed, $pk, $mu, $message, $context, $hashAlg, $signature, $reason);
+		}
+	}
+}
+
+sub test-sigver($file) {
+	my $supply = supply {
+		emit-test-cases-sigver($file);
+	}
+	$supply.tap: {
+		my ($parameterSet, $signatureInterface, $preHash, $externalMu,
+			$tcId, $testPassed, $pk, $mu, $message, $context, $hashAlg, $signature, $reason) = $_;
+
+		my $mldsa;
+		given $parameterSet {
+			when 'ML-DSA-44' { $mldsa = ML_DSA_44.new; }
+			when 'ML-DSA-65' { $mldsa = ML_DSA_65.new; }
+			when 'ML-DSA-87' { $mldsa = ML_DSA_87.new; }
+			default { die "could not parse parameter set" }
+		}
+
+		my $pk-blob = blob8.new(pack("H*", $pk));
+		my $sig-blob = blob8.new(pack("H*", $signature));
+
+		my Bool $result;
+
+		given $signatureInterface {
+			when 'internal' {
+				my $verify-internal = $mldsa.^find_private_method: 'verify-internal';
+				my $msg-blob = $externalMu
+				?? blob8.new(pack("H*", $mu))
+				!! blob8.new(pack("H*", $message));
+				$result = $verify-internal($mldsa, $pk-blob, $msg-blob, $sig-blob, $externalMu);
+			}
+			when 'external' {
+				my $msg-blob = blob8.new(pack("H*", $message));
+				my $ctx-blob = buf8.new(pack("H*", $context));
+
+				if $preHash eq 'pure' {
+					$result = $mldsa.verify(:pk($pk-blob), :M($msg-blob),
+						:signature($sig-blob), :ctx($ctx-blob));
+				} elsif $preHash eq 'preHash' {
+					if $hashAlg ∈ %supported-prehash {
+						$result = $mldsa.verify(:pk($pk-blob), :M($msg-blob),
+							:signature($sig-blob), :ctx($ctx-blob),
+							:prehash-fn($hashAlg));
+					} else {
+						skip "Unsupported prehash algorithm: $hashAlg", 1;
+						next;
+					}
+				}
+			}
+		}
+
+		is $result, $testPassed,
+		"ML-DSA-SigVer ($parameterSet) tcID: $tcId ($signatureInterface/$preHash) - $reason";
+	}
+}
+
+## Debugging tests
+
+
+sub same-scope() {
+
+	# check for issues when running ML_DSA variants within the same scope
+
+	# this works
+	my $mldsa44_a = ML_DSA_44.new;
+	my $key-pair44_a = $mldsa44_a.keygen;
+	$mldsa44_a.sign(:sk($key-pair44_a.private), :M(blob8.new));
+
+	# this works
+	my $mldsa65 = ML_DSA_65.new;
+	my $key-pair65 = $mldsa65.keygen;
+	$mldsa65.sign(:sk($key-pair65.private), :M(blob8.new));
+    
+	# this used to crash
+	my $mldsa44_b = ML_DSA_44.new;
+	my $key-pair44_b = $mldsa44_b.keygen;
+	$mldsa44_b.sign(:sk($key-pair44_b.private), :M(blob8.new));
+
+	my $mldsa87 = ML_DSA_87.new;
+	my $key-pair87 = $mldsa87.keygen;
+	$mldsa87.sign(:sk($key-pair87.private), :M(blob8.new: 1, 2, 3));
+
+}
+
+# debugging tools
+
+sub first-mismatch(Str $s1, Str $s2 --> Int) {
+	# compare up to the shorter length
+	my $limit = [$s1.chars, $s2.chars].min;
+	for 0, 2...^$limit -> $i {
+		return ($i div 2) if $s1.substr($i, 2) ne $s2.substr($i, 2);
+	}
+	# if one is longer, the first extra character is a “mismatch” at position $limit
+	return $s1.chars == $s2.chars ?? -1 !! ($limit div 2);
+}
+
+
+## Smoke tests: 1 keygen/sign/verify roundtrip per variant
+
+sub smoke-test($variant-name, $mldsa) {
+	my $kp = $mldsa.keygen;
+	ok $kp.public.defined, “$variant-name smoke: keygen produces public key”;
+	ok $kp.private.defined, “$variant-name smoke: keygen produces private key”;
+
+	my $msg = blob8.new(0x48, 0x65, 0x6C, 0x6C, 0x6F); # “Hello”
+	my $sig = $mldsa.sign(:sk($kp.private), :M($msg), :deterministic);
+	ok $sig.defined, “$variant-name smoke: sign produces signature”;
+
+	ok $mldsa.verify(:pk($kp.public), :M($msg), :signature($sig)),
+	“$variant-name smoke: verify accepts valid signature”;
+
+	my $bad-msg = blob8.new(0x42, 0x79, 0x65); # “Bye”
+	nok $mldsa.verify(:pk($kp.public), :M($bad-msg), :signature($sig)),
+	“$variant-name smoke: verify rejects wrong message”;
+}
+
+
+smoke-test(“ML-DSA-44”, ML_DSA_44.new);
+smoke-test(“ML-DSA-65”, ML_DSA_65.new);
+smoke-test(“ML-DSA-87”, ML_DSA_87.new);
+
+lives-ok { same-scope() }, "ML-DSA variants can coeexist";
+
+## Wycheproof test vectors
+# Source: https://github.com/C2SP/wycheproof (git submodule at t/data/wycheproof)
+
+sub mldsa-for-variant($variant) {
+	given $variant {
+		when '44' { ML_DSA_44.new }
+		when '65' { ML_DSA_65.new }
+		when '87' { ML_DSA_87.new }
+		default { die "unknown variant: $variant" }
+	}
+}
+
+# --- Wycheproof verify ---
+
+sub emit-wp-verify-cases($filename) {
+	my $publicKey = "";
+	my $tcId;
+	my $comment;
+	my $msg;
+	my $ctx;
+	my $sig;
+	my $result;
+	my Bool $in-flags = False;
+
+	for $filename.IO.lines -> $line {
+		# group-level publicKey (not publicKeyDer)
+		if $line ~~ /^\s*'"publicKey": "' (<[0..9a..fA..F]>*) '"'/ {
+			$publicKey = "$0";
+		}
+		if $line ~~ /'"tcId": ' (\d+)/ {
+			$tcId = +"$0";
+			$ctx = "";	# reset optional field
+		}
+		if $line ~~ /'"comment": "' (.*?) '"'/ {
+			$comment = "$0";
+		}
+		if $line ~~ /'"msg": "' (<[0..9a..fA..F]>*) '"'/ {
+			$msg = "$0";
+		}
+		if $line ~~ /'"ctx": "' (<[0..9a..fA..F]>*) '"'/ {
+			$ctx = "$0";
+		}
+		# sig line (very long hex)
+		if $line ~~ /'"sig": "' (<[0..9a..fA..F]>*) '"'/ {
+			$sig = "$0";
+		}
+		if $line ~~ /'"result": "' (\w+) '"'/ {
+			$result = "$0";
+		}
+		if $line ~~ /'"flags": ['/ {
+			$in-flags = True;
+		}
+		if $in-flags && $line ~~ /']'/ {
+			$in-flags = False;
+			emit ($publicKey, $tcId, $comment, $msg, $ctx, $sig, $result);
+		}
+	}
+}
+
+sub test-wp-verify($variant) {
+	my $file = wycheproof-path("mldsa_{$variant}_verify_test.json").Str;
+	my $mldsa = mldsa-for-variant($variant);
+	my $supply = supply { emit-wp-verify-cases($file) };
+	$supply.tap: {
+		my ($publicKey, $tcId, $comment, $msg, $ctx, $sig, $result) = $_;
+		my $expected = $result eq 'valid';
+
+		my $got = try {
+			my $pk-blob  = blob8.new(pack("H*", $publicKey));
+			my $msg-blob = blob8.new(pack("H*", $msg));
+			my $sig-blob = blob8.new(pack("H*", $sig));
+			my $ctx-blob = buf8.new(pack("H*", $ctx));
+			$mldsa.verify(:pk($pk-blob), :M($msg-blob),
+				:signature($sig-blob), :ctx($ctx-blob));
+		};
+		$got //= False;
+
+		is ?$got, $expected,
+		"Wycheproof ML-DSA-{$variant} verify tcId: $tcId ($comment)";
+	};
+}
+
+# --- Wycheproof sign (expanded private key, deterministic) ---
+
+sub emit-wp-sign-noseed-cases($filename) {
+	my $privateKey = "";
+	my $publicKey  = "";
+	my $tcId;
+	my $comment;
+	my $msg;
+	my $mu;
+	my $ctx;
+	my $sig;
+	my $result;
+	my Bool $is-internal;
+	my Bool $is-invalid-sk;
+	my Bool $in-flags = False;
+
+	for $filename.IO.lines -> $line {
+		if $line ~~ /^\s*'"privateKey": "' (<[0..9a..fA..F]>*) '"'/ {
+			$privateKey = "$0";
+		}
+		# publicKey at group level (first occurrence after privateKey)
+		if $line ~~ /^\s*'"publicKey": "' (<[0..9a..fA..F]>*) '"'/ {
+			$publicKey = "$0";
+		}
+		if $line ~~ /'"tcId": ' (\d+)/ {
+			$tcId = +"$0";
+			$ctx = "";
+			$msg = "";
+			$mu = "";
+			$is-internal = False;
+			$is-invalid-sk = False;
+		}
+		if $line ~~ /'"comment": "' (.*?) '"'/ {
+			$comment = "$0";
+		}
+		if $line ~~ /'"msg": "' (<[0..9a..fA..F]>*) '"'/ {
+			$msg = "$0";
+		}
+		if $line ~~ /'"mu": "' (<[0..9a..fA..F]>*) '"'/ {
+			$mu = "$0";
+		}
+		if $line ~~ /'"ctx": "' (<[0..9a..fA..F]>*) '"'/ {
+			$ctx = "$0";
+		}
+		if $line ~~ /'"sig": "' (<[0..9a..fA..F]>*) '"'/ {
+			$sig = "$0";
+		}
+		if $line ~~ /'"result": "' (\w+) '"'/ {
+			$result = "$0";
+		}
+		if $line ~~ /'"flags": ['/ {
+			$in-flags = True;
+		}
+		if $in-flags {
+			if $line ~~ /'"Internal"'/ {
+				$is-internal = True;
+			}
+			if $line ~~ /'"InvalidPrivateKey"'/ {
+				$is-invalid-sk = True;
+			}
+			if $line ~~ /']'/ {
+				$in-flags = False;
+				emit ($privateKey, $publicKey, $tcId, $comment, $msg, $mu, $ctx, $sig, $result, $is-internal, $is-invalid-sk);
+			}
+		}
+	}
+}
+
+sub test-wp-sign-noseed($variant) {
+	subset WpByteArray32 of buf8 where *.elems == 32;
+	my $file = wycheproof-path("mldsa_{$variant}_sign_noseed_test.json").Str;
+	my $mldsa = mldsa-for-variant($variant);
+	my $supply = supply { emit-wp-sign-noseed-cases($file) };
+	$supply.tap: {
+		my ($privateKey, $publicKey, $tcId, $comment, $msg, $mu, $ctx, $sig, $result, $is-internal, $is-invalid-sk) = $_;
+
+		if $result eq 'invalid' {
+			# invalid tests (including InvalidPrivateKey): signing should fail
+			my $died = False;
+			try {
+				my $sk-blob  = blob8.new(pack("H*", $privateKey));
+				my $msg-blob = blob8.new(pack("H*", $msg));
+				my $ctx-blob = buf8.new(pack("H*", $ctx));
+				$mldsa.sign(:sk($sk-blob), :M($msg-blob),
+					:ctx($ctx-blob), :deterministic);
+				CATCH { default { $died = True } }
+			};
+			ok $died,
+			"Wycheproof ML-DSA-{$variant} sign-noseed tcId: $tcId rejects ($comment)";
+		} elsif $is-internal {
+			# Internal tests: use sign-internal with mu and external_mu=True
+			my $computed-sig = try {
+				my $sk-blob  = blob8.new(pack("H*", $privateKey));
+				my $mu-blob  = blob8.new(pack("H*", $mu));
+				my $rnd-blob = WpByteArray32.new(buf8.allocate(32));
+				my $sign-internal = $mldsa.^find_private_method: 'sign-internal';
+				$sign-internal($mldsa, $sk-blob, $mu-blob, $rnd-blob, True);
+			};
+			if $computed-sig.defined {
+				ok ($computed-sig>>.fmt("%02x").join eqv $sig.lc),
+				"Wycheproof ML-DSA-{$variant} sign-noseed tcId: $tcId ($comment) [internal]";
+			} else {
+				ok False,
+				"Wycheproof ML-DSA-{$variant} sign-noseed tcId: $tcId ($comment) [internal] - sign died unexpectedly";
+			}
+		} else {
+			my $computed-sig = try {
+				my $sk-blob  = blob8.new(pack("H*", $privateKey));
+				my $msg-blob = blob8.new(pack("H*", $msg));
+				my $ctx-blob = buf8.new(pack("H*", $ctx));
+				$mldsa.sign(:sk($sk-blob), :M($msg-blob),
+					:ctx($ctx-blob), :deterministic);
+			};
+			if $computed-sig.defined {
+				ok ($computed-sig>>.fmt("%02x").join eqv $sig.lc),
+				"Wycheproof ML-DSA-{$variant} sign-noseed tcId: $tcId ($comment)";
+			} else {
+				ok False,
+				"Wycheproof ML-DSA-{$variant} sign-noseed tcId: $tcId ($comment) - sign died unexpectedly";
+			}
+		}
+	};
+}
+
+# --- Wycheproof sign (from seed, deterministic) ---
+
+sub emit-wp-sign-seed-cases($filename) {
+	my $privateSeed = "";
+	my $publicKey   = "";
+	my $tcId;
+	my $comment;
+	my $msg;
+	my $mu;
+	my $ctx;
+	my $sig;
+	my $result;
+	my Bool $is-internal;
+	my Bool $in-flags = False;
+
+	for $filename.IO.lines -> $line {
+		if $line ~~ /'"privateSeed": "' (<[0..9a..fA..F]>*) '"'/ {
+			$privateSeed = "$0";
+		}
+		if $line ~~ /^\s*'"publicKey": "' (<[0..9a..fA..F]>*) '"'/ {
+			$publicKey = "$0";
+		}
+		if $line ~~ /'"tcId": ' (\d+)/ {
+			$tcId = +"$0";
+			$ctx = "";
+			$msg = "";
+			$mu = "";
+			$is-internal = False;
+		}
+		if $line ~~ /'"comment": "' (.*?) '"'/ {
+			$comment = "$0";
+		}
+		if $line ~~ /'"msg": "' (<[0..9a..fA..F]>*) '"'/ {
+			$msg = "$0";
+		}
+		if $line ~~ /'"mu": "' (<[0..9a..fA..F]>*) '"'/ {
+			$mu = "$0";
+		}
+		if $line ~~ /'"ctx": "' (<[0..9a..fA..F]>*) '"'/ {
+			$ctx = "$0";
+		}
+		if $line ~~ /'"sig": "' (<[0..9a..fA..F]>*) '"'/ {
+			$sig = "$0";
+		}
+		if $line ~~ /'"result": "' (\w+) '"'/ {
+			$result = "$0";
+		}
+		if $line ~~ /'"flags": ['/ {
+			$in-flags = True;
+		}
+		if $in-flags {
+			if $line ~~ /'"Internal"'/ {
+				$is-internal = True;
+			}
+			if $line ~~ /']'/ {
+				$in-flags = False;
+				emit ($privateSeed, $publicKey, $tcId, $comment, $msg, $mu, $ctx, $sig, $result, $is-internal);
+			}
+		}
+	}
+}
+
+sub test-wp-sign-seed($variant) {
+	subset ByteArray32-seed of buf8 where *.elems == 32;
+	my $file = wycheproof-path("mldsa_{$variant}_sign_seed_test.json").Str;
+	my $mldsa = mldsa-for-variant($variant);
+	my $supply = supply { emit-wp-sign-seed-cases($file) };
+	$supply.tap: {
+		my ($privateSeed, $publicKey, $tcId, $comment, $msg, $mu, $ctx, $sig, $result, $is-internal) = $_;
+
+		if $result eq 'invalid' {
+			my $died = False;
+			try {
+				my $seed-blob = buf8.new(pack("H*", $privateSeed));
+				my $keygen-internal = $mldsa.^find_private_method: 'keygen-internal';
+				my $kp = $keygen-internal($mldsa, $seed-blob);
+				my $msg-blob = blob8.new(pack("H*", $msg));
+				my $ctx-blob = buf8.new(pack("H*", $ctx));
+				$mldsa.sign(:sk($kp.private), :M($msg-blob),
+					:ctx($ctx-blob), :deterministic);
+				CATCH { default { $died = True } }
+			};
+			ok $died,
+			"Wycheproof ML-DSA-{$variant} sign-seed tcId: $tcId rejects ($comment)";
+		} elsif $is-internal {
+			# Internal tests: use sign-internal with mu and external_mu=True
+			my $computed-sig = try {
+				my $seed-blob = buf8.new(pack("H*", $privateSeed));
+				my $keygen-internal = $mldsa.^find_private_method: 'keygen-internal';
+				my $kp = $keygen-internal($mldsa, $seed-blob);
+				my $mu-blob  = blob8.new(pack("H*", $mu));
+				my $rnd-blob = ByteArray32-seed.new(buf8.allocate(32));
+				my $sign-internal = $mldsa.^find_private_method: 'sign-internal';
+				$sign-internal($mldsa, $kp.private, $mu-blob, $rnd-blob, True);
+			};
+			if $computed-sig.defined {
+				ok ($computed-sig>>.fmt("%02x").join eqv $sig.lc),
+				"Wycheproof ML-DSA-{$variant} sign-seed tcId: $tcId ($comment) [internal]";
+			} else {
+				ok False,
+				"Wycheproof ML-DSA-{$variant} sign-seed tcId: $tcId ($comment) [internal] - sign died unexpectedly";
+			}
+		} else {
+			my $computed-sig = try {
+				my $seed-blob = buf8.new(pack("H*", $privateSeed));
+				my $keygen-internal = $mldsa.^find_private_method: 'keygen-internal';
+				my $kp = $keygen-internal($mldsa, $seed-blob);
+				my $msg-blob = blob8.new(pack("H*", $msg));
+				my $ctx-blob = buf8.new(pack("H*", $ctx));
+				$mldsa.sign(:sk($kp.private), :M($msg-blob),
+					:ctx($ctx-blob), :deterministic);
+			};
+			if $computed-sig.defined {
+				ok ($computed-sig>>.fmt("%02x").join eqv $sig.lc),
+				"Wycheproof ML-DSA-{$variant} sign-seed tcId: $tcId ($comment)";
+			} else {
+				ok False,
+				"Wycheproof ML-DSA-{$variant} sign-seed tcId: $tcId ($comment) - sign died unexpectedly";
+			}
+		}
+	};
+}
+
+# Run Wycheproof tests for all three ML-DSA variants
+
+if ensure-wycheproof-vectors() {
+	for <44 65 87> -> $v {
+		test-wp-verify($v);
+		test-wp-sign-noseed($v);
+		test-wp-sign-seed($v);
+	}
+} else {
+	skip 'Wycheproof vectors not available (run: git submodule update --init)', 1;
+}
+
+## NIST vector tests
+
+test-keygen($keygen-file);
+test-siggen($siggen-file);
+test-sigver($sigver-file);
+

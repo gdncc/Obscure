@@ -1,3 +1,5 @@
+use v6.d;
+
 unit module Obscure::Hashes::SHA3;
 
 subset Capacity of Int where *== 256 | 448 | 512 | 768 | 1024;
@@ -21,9 +23,9 @@ role KECCAK-p[PermutationsBitLength $b, Int $nr] {
 # When restricted to the case b=1600, the KECCAK family is denoted by KECCAK[c];
 # KECCAK[c] = SPONGE[KECCAK-p[1600, 24], pad10*1, 1600–c].
 role KECCAK-c[Capacity $capacity,
-                PaddingDelimiter $padding-delimiter,
-                Int $output-bits-length where ($_ >= 8 and $_ mod 8 == 0) ]
-        does KECCAK-p[1600,24] {
+    PaddingDelimiter $padding-delimiter,
+    Int $output-bits-length where ($_ >= 8 and $_ mod 8 == 0) ]
+does KECCAK-p[1600, 24] {
     has Int $.capacity = $capacity div 8;
     has PaddingDelimiter $!padding-delimiter = $padding-delimiter;
 
@@ -42,21 +44,22 @@ role KECCAK-c[Capacity $capacity,
 
     # Transient input buffer
     has Int $!buffer-written-index = 0;
-    has Buf $!buffer;
+    has buf8 $!buffer;
 
     # Output buffer
-    has Buf $!output-buffer;
+    has buf8 $!output-buffer;
 
     has SpongeState $!sponge-state = ABSORB;
 
     submethod TWEAK() {
         $!rate = self.b - $!capacity;
         $!output-bytes-length = $output-bits-length div 8;
-        $!buffer = Buf.new(0 xx self.b); # rate + capacity
-	$!output-buffer = Buf.new(0 xx $!rate); # rate
+        $!buffer = buf8.new(0 xx self.b); # rate + capacity
+        $!output-buffer = buf8.new(0 xx $!rate); # rate
         self.lane-size = self.b div 25;
     }
 
+    # TKTK unused
     method store64(Int $n) {
         gather { for ^8 { take ($n +> (8 * $_) +& 0xff) } }
     }
@@ -72,7 +75,7 @@ role KECCAK-c[Capacity $capacity,
         # D[x,z]=C[(x-1) mod 5, z] ⊕ C[(x+1) mod 5, (z –1) mod w].
         for ^5 -> $x {
             @!D[$x] = @!C[($x - 1) % 5]
-                    +^ ((@!C[($x + 1) % 5] +< 1 +| @!C[($x + 1) % 5] +> 63) +& 0xffffffffffffffff);
+            +^ ((@!C[($x + 1) % 5] +< 1 +| @!C[($x + 1) % 5] +> 63) +& 0xffffffffffffffff);
             # For all triples (x, y, z) such that 0≤x<5, 0≤y<5, and 0≤z<w, let
             # A′[x, y,z] = A[x, y,z] ⊕ D[x,z]
             for ^5 -> $y {
@@ -124,8 +127,8 @@ role KECCAK-c[Capacity $capacity,
         for ^5 -> $x {
             for ^5 -> $y {
                 @!A[$x + 5 * $y] = @!A-prime[$x + 5 * $y]
-                        +^ ((@!A-prime[($x + 1) % 5 + 5 * $y] +^ 0xffffffffffffffff)
-                                +&  @!A-prime[($x + 2) % 5 + 5 * $y])
+                +^ ((@!A-prime[($x + 1) % 5 + 5 * $y] +^ 0xffffffffffffffff)
+                    +&  @!A-prime[($x + 2) % 5 + 5 * $y])
             }
         }
     }
@@ -174,7 +177,7 @@ role KECCAK-c[Capacity $capacity,
         $!sponge-state = ABSORB;
         $.output-bytes-length = $output-bits-length div 8;
 
-	for ^$!buffer.elems -> $i { $!buffer.write-uint8($i,0) };
+        for ^$!buffer.elems -> $i { $!buffer.write-uint8($i, 0) };
 
         $!buffer-written-index = 0;
 
@@ -182,11 +185,11 @@ role KECCAK-c[Capacity $capacity,
 
         for @!A-prime <-> $e { $e = 0 }
 
-	$!last-read-pos = 0;
+        $!last-read-pos = 0;
 
     }
 
-    method absorb(Blob $input-bytes) {
+    method absorb(blob8 $input-bytes) {
         if $!sponge-state eqv SQUEEZE {
             X::AdHoc.new(:payload<SpongeWrongDirection>).throw
         }
@@ -194,7 +197,7 @@ role KECCAK-c[Capacity $capacity,
         my Int $input-bytes-length = $input-bytes.elems;
 
         for ^$input-bytes-length -> $i {
-            $!buffer[$!buffer-written-index] = $input-bytes[$i];	    
+            $!buffer[$!buffer-written-index] = $input-bytes[$i];
             if $!buffer-written-index == $!rate -1 {
 
                 for ^25 -> $j {
@@ -227,41 +230,41 @@ role KECCAK-c[Capacity $capacity,
             # keccak it
             $.keccak-p;
 
-	    # copy state to $output-buffer ( 17 blocks out of 25)
-	    for ^($!rate div 8) -> $i {
-		$!output-buffer.write-uint64($i * 8, @!A[$i], LittleEndian);
-	    }
+            # copy state to $output-buffer ( 17 blocks out of 25)
+            for ^($!rate div 8) -> $i {
+                $!output-buffer.write-uint64($i * 8, @!A[$i], LittleEndian);
+            }
         }
 
         # squeeze
-	my $output = Buf.new;
-	my $updated-output-bytes-length = $.output-bytes-length;
-	while ($updated-output-bytes-length + $!last-read-pos > $!rate ) {
+        my $output = buf8.new;
+        my $updated-output-bytes-length = $.output-bytes-length;
+        while ($updated-output-bytes-length + $!last-read-pos > $!rate ) {
 
-	    $output.append($!output-buffer.subbuf($!last-read-pos, $!rate - $!last-read-pos));
-	    $.keccak-p;
+            $output.append($!output-buffer.subbuf($!last-read-pos, $!rate - $!last-read-pos));
+            $.keccak-p;
 
-	    for ^($!rate div 8) -> $i {
-		$!output-buffer.write-uint64($i * 8, @!A[$i], LittleEndian);
-	    }
+            for ^($!rate div 8) -> $i {
+                $!output-buffer.write-uint64($i * 8, @!A[$i], LittleEndian);
+            }
             $updated-output-bytes-length = $updated-output-bytes-length - ($!rate - $!last-read-pos);
-	    $!last-read-pos = 0;
-	}
+            $!last-read-pos = 0;
+        }
 
-	if ($updated-output-bytes-length > 0) {
-	    $output.append($!output-buffer.subbuf($!last-read-pos,  $updated-output-bytes-length));
-	    $!last-read-pos = $!last-read-pos + $updated-output-bytes-length;
-	}
+        if ($updated-output-bytes-length > 0) {
+            $output.append($!output-buffer.subbuf($!last-read-pos,  $updated-output-bytes-length));
+            $!last-read-pos = $!last-read-pos + $updated-output-bytes-length;
+        }
 
-	$output;
+        blob8.new: $output;
 	
     }
     
     submethod DESTROY {
         # attempt to clear temp data, no guarantees
-	for ^$!buffer.elems -> $i { $!buffer.write-uint8($i,0) };
+        for ^$!buffer.elems -> $i { $!buffer.write-uint8($i, 0) };
 
-	for ^$!output-buffer.elems -> $i { $!output-buffer.write-uint8($i,0) };
+        for ^$!output-buffer.elems -> $i { $!output-buffer.write-uint8($i, 0) };
 
         for @!A <-> $e { $e = 0 }; for @!A-prime <-> $e { $e = 0 };
 
@@ -269,22 +272,26 @@ role KECCAK-c[Capacity $capacity,
     }
 }
 
-role HashLike[KECCAK-c $k]  {
-    has KECCAK-c $!k = $k;
+role HashLike[::KType]  {
+    has KECCAK-c $!k;
     has Bool $!finalized = False;
 
-    multi method hash(Blob $input-bytes ) {
+    submethod TWEAK() {
+        $!k = KType.new;
+    }
+
+    multi method hash(blob8 $input-bytes ) {
         $!k.absorb($input-bytes);
         my $result = $!k.squeeze();
-	$!k.reset;
-	$result
+        $!k.reset;
+        $result
     }
 
     multi method hash(Str $input-string ) {
         samewith $input-string.encode
     }
 
-    multi method update(Blob $input-bytes) {
+    multi method update(blob8 $input-bytes) {
         $!k.absorb($input-bytes)
     }
 
@@ -293,25 +300,29 @@ role HashLike[KECCAK-c $k]  {
     }
 
     method final() {
-	if $!finalized == False {
-	    $!finalized = True;
+        if $!finalized == False {
+            $!finalized = True;
             return $!k.squeeze()
-	} else {
-	    X::AdHoc.new(:payload<AlreadyCalledFinal>).throw	    
-	}
+        } else {
+            X::AdHoc.new(:payload<AlreadyCalledFinal>).throw
+        }
     }
 
     method reset() {
-	$!finalized = False;
+        $!finalized = False;
         $!k.reset;
-	return
+        return
     }
 };
 
-role SHAKELike[KECCAK-c $k] {
-    has KECCAK-c $!k = $k;
+role SHAKELike[::KType] {
+    has KECCAK-c $!k;
 
-    multi method absorb(Blob $input-bytes) {
+    submethod TWEAK() {
+        $!k = KType.new;
+    }
+
+    multi method absorb(blob8 $input-bytes) {
         $!k.absorb($input-bytes)
     }
 
@@ -326,37 +337,20 @@ role SHAKELike[KECCAK-c $k] {
 
     # default output size if none specified
     multi method squeeze() {
-        $!k.output-bytes-length = $k.capacity;
+        $!k.output-bytes-length = $!k.capacity;
         $!k.squeeze()
     }
 
     method reset() {
         $!k.reset;
-	return
+        return
     }
 }
 
-sub SHA3_224 () is export {
-    HashLike[KECCAK-c[448, 0x06, 224].new].new
-}
-
-sub SHA3_256 () is export {
-    HashLike[KECCAK-c[512, 0x06, 256].new].new
-}
-
-sub SHA3_384 () is export {
-    HashLike[KECCAK-c[768, 0x06, 384].new].new
-}
-
-sub SHA3_512 () is export {
-    HashLike[KECCAK-c[1024, 0x06, 512].new].new
-}
-
-sub SHAKE128() is export {
-    SHAKELike[KECCAK-c[256, 0x1f, 256].new].new
-}
-
-sub SHAKE256() is export {
-    SHAKELike[KECCAK-c[512, 0x1f, 512].new].new
-}
+constant SHA3_224  is export = HashLike[KECCAK-c[448, 0x06, 224]];
+constant SHA3_256  is export = HashLike[KECCAK-c[512, 0x06, 256]];
+constant SHA3_384  is export = HashLike[KECCAK-c[768, 0x06, 384]];
+constant SHA3_512  is export = HashLike[KECCAK-c[1024, 0x06, 512]];
+constant SHAKE128  is export = SHAKELike[KECCAK-c[256, 0x1f, 256]];
+constant SHAKE256  is export = SHAKELike[KECCAK-c[512, 0x1f, 512]];
 

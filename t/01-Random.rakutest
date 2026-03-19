@@ -1,0 +1,75 @@
+use Test;
+use Obscure::Random;
+use Obscure::Completion;
+
+# Exercise high level API
+
+my $b = buf8.allocate(8);
+secure-random($b);
+ok ([+] $b.list) != 0 , "Output should not be all zeroes with overwhelming probability.";
+
+
+my $buf256 = buf8.allocate(256);
+ok Successful ~~ secure-random($buf256), 'Can get 256 bytes';
+ok $buf256.unique.elems >= 128, 'Not too many repeating random values sanity check';
+
+my $buf0 = buf8.allocate(0);
+ok { Successful ~~ secure-random($buf0) }, 'No weirdness when attempt to retrieve 0 byte';
+
+# Internal tests that might be OS version dependent
+sub test-read-random-internal-macos($size) {
+    my $buf = buf8.allocate($size);
+    Obscure::RandomInternal::macOS::read-random-internal($buf);
+}
+
+sub test-getentropy-internal-macos($size) {
+    my $buf = buf8.allocate($size);
+    Obscure::RandomInternal::macOS::getentropy-internal($buf);
+}
+
+sub test-read-random-internal-linux($size) {
+    my $buf = buf8.allocate($size);
+    Obscure::RandomInternal::linux::read-random-internal($buf);
+}
+
+if $*DISTRO.name eq 'macos' {
+    # /dev/random
+    ok Successful ~~ test-read-random-internal-macos(256);
+    ok Successful ~~ test-read-random-internal-macos(0);
+    ok Successful ~~ test-read-random-internal-macos(257);
+
+    my $buf256a = buf8.allocate(256);
+    ok Successful ~~ Obscure::RandomInternal::macOS::read-random-internal($buf256a);
+    ok $buf256a.unique.elems >= 128, '/dev/random not too many repeating random values sanity check';
+
+    # getentropy()
+    if   $*DISTRO.version >= v10.12.0 {
+        my $too-large-blob = buf8.allocate(257);
+        ok UnsuccessfulNoErrorCode ~~ secure-random($too-large-blob), 'Cannot getentropy() on more than 256 bytes';
+
+        ok Successful ~~ test-getentropy-internal-macos(256);
+        ok Successful ~~ test-getentropy-internal-macos(0);
+        ok UnsuccessfulNoErrorCode ~~ test-getentropy-internal-macos(257);
+
+        my $buf256b = buf8.allocate(256);
+        Obscure::RandomInternal::macOS::read-random-internal($buf256b);
+        ok $buf256b.unique.elems >= 128, 'getentropy() not too many repeating random values sanity check';
+    }
+}
+
+if $*KERNEL.name eq 'linux' {
+    ok Successful ~~ test-read-random-internal-linux(256);
+    ok Successful ~~ test-read-random-internal-linux(0);
+    ok Successful ~~ test-read-random-internal-linux(257);
+
+    my $buf256 = buf8.allocate(256);
+    ok Successful ~~ Obscure::RandomInternal::linux::read-random-internal($buf256);
+    ok $buf256.unique.elems >= 128, '/dev/urandom not too many repeating random values sanity check';
+}
+
+
+
+
+done-testing;
+
+
