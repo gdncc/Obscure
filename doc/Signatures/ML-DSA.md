@@ -53,8 +53,6 @@ PARAMETER SETS
 </tbody>
 </table>
 
-ML-DSA-44 is suitable for most applications. ML-DSA-65 provides higher assurance. ML-DSA-87 provides maximum security.
-
 API REFERENCE
 =============
 

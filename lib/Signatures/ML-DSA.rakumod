@@ -555,42 +555,26 @@ role ML-DSA[
 		    my $t = @coeffs[$j];
 		    @coeffs[$j] = ($t + @coeffs[$j + $len]) % q;
 		    @coeffs[$j + $len] = ($t - @coeffs[$j + $len]) % q;
-		    @coeffs[$j + $len] = ($z * @coeffs[$j + $len]) % q;				     
+		    @coeffs[$j + $len] = ($z * @coeffs[$j + $len]) % q;
 		}
 		$start = $start + 2 * $len;
 	    }
 	    $len = 2 * $len;
 	}
 	my $f = 8347681;
-	
+
 	for ^256 -> $j {
 	    @coeffs[$j] = ( $f * @coeffs[$j] ) % q
 	}
 	RqElement.new(coeffs => @coeffs)
     }
 
-    # Algorithm 9 IntegerToBits
-    # Decomposes Int $x into a Seq of 1 or 0 bits
-    method !integer-to-bits(Int:D $x where * ≥ 0, Int:D $α where * > 0 --> Seq) {  # α is the number of bits
-	(^$α).map: { $x +> $_ +& 1 }
-    }
-
-    # Algorithm 10 BitsToInteger
-    method !bits-to-integer(@y where .all ~~ 0 | 1, Int:D $α where * > 0 --> Int:D ) {
-	[+] @y[^$α] Z+< ^$α
-    }
-
+    # Algorithm 9 IntegerToBits / Algorithm 10 BitsToInteger
     # Algorithm 11 IntegerToBytes
-	# (not implemented/not required)
-
     # Algorithm 12 BitsToBytes
-    method !bits-to-bytes(@y where .all ~~ 0 | 1 --> blob8) {
-	my $z = buf8.allocate((@y.elems + 7) div 8 );
-	for @y.kv -> $i, $bit {
-            $z[$i div 8] +|= $bit +< ($i % 8);
-	}
-	blob8.new: $z
-    }
+    #   Inlined into SimpleBitPack/BitPack/SimpleBitUnpack/BitUnpack below.
+    #   Coefficients are packed directly into bytes without an intermediate
+    #   bit array
 
     # Algorithm 13 BytesToBits
     method !bytes-to-bits(blob8 $z --> Seq) {
@@ -625,59 +609,70 @@ role ML-DSA[
 	}
     }
 
-    # Algorithm 16 SimpleBitPack
+    # ── Shared bit-packing core ──────────────────────────────────────────
+    # Packs 256 unsigned coefficients into a byte stream, $bitlen bits per value, LSB-first.
+    # Used by Algorithms 16 (SimpleBitPack) and 17 (BitPack).
+    method !pack-coeffs-to-bytes(@coeffs, int $bitlen --> blob8) {
+	my int ($bits, $len) = 0, 0;
+	my $out = buf8.new;
+
+	for @coeffs -> int $v {
+	    $bits +|= $v +< $len;
+	    $len  += $bitlen;
+
+	    while $len >= 8 {
+		$out.append: $bits +& 0xff;
+		$bits +>= 8;
+		$len  -= 8;
+	    }
+	}
+
+	$len and $out.append: $bits +& 0xff;
+	blob8.new: $out
+    }
+
+    # Unpacks a byte stream into 256 unsigned coefficients, $bitlen bits per value, LSB-first.
+    # Used by Algorithms 18 (SimpleBitUnpack) and 19 (BitUnpack).
+    method !unpack-bytes-to-coeffs(blob8 $v, int $bitlen --> Array) {
+	fail "Expected {$bitlen * 32} bytes, got {$v.elems}" unless $v.elems == $bitlen * 32;
+	my int ($bits, $len, $mask) = 0, 0, (1 +< $bitlen) - 1;
+	my @coeffs;
+
+	for $v.list -> int $byte {
+	    $bits +|= $byte +< $len;
+	    $len  += 8;
+
+	    while $len >= $bitlen {
+		@coeffs.push: $bits +& $mask;
+		$bits +>= $bitlen;
+		$len  -= $bitlen;
+	    }
+	}
+	
+	@coeffs
+    }
+
+    # ── Algorithms 16–19: thin wrappers around shared core ──────────────
+
+    # Algorithm 16 SimpleBitPack — coefficients in 0..$b, packed directly
     method !simple-bit-pack(RingElement $w, Int:D $b where * >= 0 --> blob8) {
-	my $bitlen = ENTER {bitlen($b)}
-	POST { *.elems == 32 * $bitlen }
-	self!bits-to-bytes(
-	    gather {
-		for $w.coeffs { take(slip(self!integer-to-bits($_, $bitlen))) };
-	    }
-	)
+	self!pack-coeffs-to-bytes($w.coeffs, bitlen($b))
     }
 
-    # Algorithm 17 BitPack
+    # Algorithm 17 BitPack — coefficients in -$a..$b, mapped to 0..($a+$b) as ($b - coeff)
     method !bit-pack(RingElement $w, Int:D $a where * >= 0, Int:D $b where * >= 0 --> blob8) {
-	my $bitlen = ENTER { bitlen($a + $b)};
-	POST { *.elems == $bitlen * 32} ;
-	self!bits-to-bytes(
-	    gather {
-		for $w.coeffs { take(slip(self!integer-to-bits($b - $_, $bitlen))) };
-	    }
-	)
+	self!pack-coeffs-to-bytes($w.coeffs.map({ $b - $_ }), bitlen($a + $b))
     }
 
-    # Algorithm 18 SimpleBitUnpack
-    method !simple-bit-unpack(blob8 $v,  Int:D $b where * >= 0 --> RingElement:_)  {
-	# inline check, as Raku processes signature parameters left to right
-	# one can't reference $b before they're declared
-	# and we dont want to change the order of arguments
-	fail "Expected {bitlen($b) * 32} bytes, got {$v.elems}" unless $v.elems == bitlen($b) * 32;
-	my @coeffs;
-	my $c = bitlen($b);
-	my @z = self!bytes-to-bits($v);
-	for ^256 -> $i {
-	    my $ic = $i * $c;
-	    @coeffs[$i] = self!bits-to-integer(@z[$ic..$ic + $c - 1], $c);
-	}
-	RingElement.new(:@coeffs)
+    # Algorithm 18 SimpleBitUnpack — unpacks to coefficients in 0..$b
+    method !simple-bit-unpack(blob8 $v, Int:D $b where * >= 0 --> RingElement:_) {
+	RingElement.new(:coeffs(self!unpack-bytes-to-coeffs($v, bitlen($b))))
     }
 
-    # Algorithm 19 BitUnpack
+    # Algorithm 19 BitUnpack — unpacks to coefficients in -$a..$b via ($b - raw_value)
     # ⚠ May fail
-    method !bit-unpack(blob8 $v, Int:D $a where * >= 0, Int:D $b where * >= 0 --> RingElement:_)  {
-	# inline check, as Raku processes signature parameters left to right
-	# one can't reference $a and $b before they're declared
-	# and we dont want to change the order of arguments
-	fail "Expected {bitlen($a + $b) * 32} bytes, got {$v.elems}" unless $v.elems == bitlen($a + $b) * 32;
-	my @coeffs;
-	my $c = bitlen($a + $b);
-	my @z = self!bytes-to-bits($v);
-	for ^256 -> $i {
-	    my $ic = $i * $c;
-	    @coeffs[$i] = $b - self!bits-to-integer(@z[$ic..$ic + $c - 1], $c);
-	}
-	RingElement.new(:@coeffs)
+    method !bit-unpack(blob8 $v, Int:D $a where * >= 0, Int:D $b where * >= 0 --> RingElement:_) {
+	RingElement.new(:coeffs(self!unpack-bytes-to-coeffs($v, bitlen($a + $b)).map({ $b - $_ })))
     }
 
     # Algorithm 20 HintBitPack

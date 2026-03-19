@@ -63,9 +63,6 @@ Raku constant           ML_DSA_44   ML_DSA_65   ML_DSA_87
 
 =end table
 
-ML-DSA-44 is suitable for most applications. ML-DSA-65 provides higher
-assurance. ML-DSA-87 provides maximum security.
-
 =head1 API REFERENCE
 
 =head2 keygen() --> KeyPair

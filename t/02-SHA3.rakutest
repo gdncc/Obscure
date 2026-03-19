@@ -269,7 +269,7 @@ sub monte-carlo-fixed-test($seed, $fn) {
     for ^100  {
         @md[0] = $tmp-seed;
         for 1 ..^1001 -> $i {
-            my Buf $msg = @md[$i - 1];
+            my $msg = @md[$i - 1];
             my $SHA3 = $fn.new;
             @md[$i] = $SHA3.hash($msg)
         }
@@ -302,11 +302,11 @@ sub monte-carlo-xof-test($seed, $fn, $min, $max) {
     for ^100  {
         @md[0] = $tmp-seed;
         for 1 ..^1001 -> $i {
-            my Buf $msg;
+            my $msg;
             my $mdlen = @md[$i - 1].elems;
             if $mdlen < 16 {
                 $mdlen = 16 - $mdlen;
-                $msg = @md[$i - 1].subbuf(0,16).append(0 xx $mdlen)
+                $msg = buf8.new(@md[$i - 1].subbuf(0,16)); $msg.append(0 xx $mdlen)
             } else {
                 $msg = @md[$i - 1].subbuf(0,16)
             }
